@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { X, Star, MapPin, Users, Sparkles, CheckCircle, Heart, Phone, ArrowLeft, Shield, Calendar, Clock, Check, AlertCircle, ShieldCheck } from 'lucide-react';
 import { Hall, UserProfile, Booking } from '../types';
+import { subscribeAvailability } from '../lib/firebase';
 
 interface HallDetailsModalProps {
   hall: Hall | null;
@@ -30,6 +31,27 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
     const today = new Date();
     return today.toISOString().split('T')[0];
   });
+  const [busyMinutes, setBusyMinutes] = useState<number[]>([]);
+
+  useEffect(() => {
+    const itemId = hall?.id;
+    if (!isOpen || !itemId || !selectedCalendarDate) {
+      setBusyMinutes([]);
+      return;
+    }
+    return subscribeAvailability(itemId, selectedCalendarDate, setBusyMinutes);
+  }, [isOpen, hall?.id, selectedCalendarDate]);
+
+  const busySet = useMemo(() => new Set(busyMinutes), [busyMinutes]);
+  const slotMinutes = (slot: string) => {
+    let start = 1080, end = 1380;
+    if (slot.includes('صباحي')) { start = 600; end = 840; }
+    else if (slot.includes('ليلي')) { start = 1380; end = 1560; }
+    const result: number[] = [];
+    for (let minute = start; minute < end; minute += 30) result.push(minute);
+    return result;
+  };
+  const slotIsBooked = (slot: string) => slotMinutes(slot).some((minute) => busySet.has(minute));
 
   const isSelfHall = currentUser && (currentUser.id === hall.ownerId || currentUser.ownedHallId === hall.id);
 
@@ -40,13 +62,6 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
     'ليلي سهرة (11:00 م - 2:00 ص)',
   ];
 
-  // Get accepted bookings for this hall on the selected date
-  const acceptedBookingsForDate = bookings.filter(
-    (b) =>
-      b.itemId === hall.id &&
-      b.date === selectedCalendarDate &&
-      b.status === 'مقبول'
-  );
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto" id="hall-details-modal-overlay">
@@ -190,7 +205,7 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
             {/* Slots Availability Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {STANDARD_SLOTS.map((slot) => {
-                const isBooked = acceptedBookingsForDate.some((b) => b.timeSlot === slot);
+                const isBooked = slotIsBooked(slot);
                 return (
                   <div
                     key={slot}

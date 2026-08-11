@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { X, Star, MapPin, Phone, Heart, CheckCircle2, Camera, Calendar, Shield, Clock, Check, AlertCircle, ShieldCheck } from 'lucide-react';
 import { ServiceProvider, UserProfile, Booking } from '../types';
+import { subscribeAvailability } from '../lib/firebase';
 
 interface ServiceProviderDetailsModalProps {
   provider: ServiceProvider | null;
@@ -29,6 +30,27 @@ export const ServiceProviderDetailsModal: React.FC<ServiceProviderDetailsModalPr
     const today = new Date();
     return today.toISOString().split('T')[0];
   });
+  const [busyMinutes, setBusyMinutes] = useState<number[]>([]);
+
+  useEffect(() => {
+    const itemId = provider?.id;
+    if (!isOpen || !itemId || !selectedCalendarDate) {
+      setBusyMinutes([]);
+      return;
+    }
+    return subscribeAvailability(itemId, selectedCalendarDate, setBusyMinutes);
+  }, [isOpen, provider?.id, selectedCalendarDate]);
+
+  const busySet = useMemo(() => new Set(busyMinutes), [busyMinutes]);
+  const slotMinutes = (slot: string) => {
+    let start = 1080, end = 1380;
+    if (slot.includes('صباحي')) { start = 600; end = 840; }
+    else if (slot.includes('ليلي')) { start = 1380; end = 1560; }
+    const result: number[] = [];
+    for (let minute = start; minute < end; minute += 30) result.push(minute);
+    return result;
+  };
+  const slotIsBooked = (slot: string) => slotMinutes(slot).some((minute) => busySet.has(minute));
 
   const isSelfProvider = currentUser && (currentUser.id === provider.ownerId || currentUser.ownedProviderId === provider.id);
 
@@ -38,12 +60,6 @@ export const ServiceProviderDetailsModal: React.FC<ServiceProviderDetailsModalPr
     'ليلي سهرة (11:00 م - 2:00 ص)',
   ];
 
-  const acceptedBookingsForDate = bookings.filter(
-    (b) =>
-      b.itemId === provider.id &&
-      b.date === selectedCalendarDate &&
-      b.status === 'مقبول'
-  );
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto" id="provider-details-modal-overlay">
@@ -182,7 +198,7 @@ export const ServiceProviderDetailsModal: React.FC<ServiceProviderDetailsModalPr
             {/* Slots Availability Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {STANDARD_SLOTS.map((slot) => {
-                const isBooked = acceptedBookingsForDate.some((b) => b.timeSlot === slot);
+                const isBooked = slotIsBooked(slot);
                 return (
                   <div
                     key={slot}
