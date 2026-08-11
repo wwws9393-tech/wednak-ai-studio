@@ -231,9 +231,8 @@ export async function acceptBookingInFirestore(bookingId: string): Promise<void>
       const range = getSlotTimeRange(booking.timeSlot, booking.startTime, booking.endTime);
       const segments = lockSegments(booking.itemId, booking.date, range.startMins, range.endMins);
       const lockRefs = segments.map((s) => doc(db, 'bookingLocks', s.id));
-      for (const lockRef of lockRefs) {
-        if ((await tx.get(lockRef)).exists()) throw new Error('الموعد أصبح محجوزاً بواسطة طلب آخر.');
-      }
+      const lockSnaps = await Promise.all(lockRefs.map((lockRef) => tx.get(lockRef)));
+      if (lockSnaps.some((lockSnap) => lockSnap.exists())) throw new Error('الموعد أصبح محجوزاً بواسطة طلب آخر.');
       segments.forEach((segment, index) => tx.set(lockRefs[index], {
         bookingId,
         itemId: booking.itemId,
@@ -258,11 +257,12 @@ export async function cancelBookingInFirestore(bookingId: string): Promise<void>
       if (booking.requesterId !== user.uid && booking.targetOwnerId !== user.uid) throw new Error('ليس لديك صلاحية إلغاء هذا الحجز.');
       const range = getSlotTimeRange(booking.timeSlot, booking.startTime, booking.endTime);
       const segments = lockSegments(booking.itemId, booking.date, range.startMins, range.endMins);
-      for (const segment of segments) {
-        const lockRef = doc(db, 'bookingLocks', segment.id);
-        const lockSnap = await tx.get(lockRef);
-        if (lockSnap.exists() && lockSnap.data().bookingId === bookingId) tx.delete(lockRef);
-      }
+      const lockRefs = segments.map((segment) => doc(db, 'bookingLocks', segment.id));
+      // Firestore transactions require all reads to finish before the first write.
+      const lockSnaps = await Promise.all(lockRefs.map((lockRef) => tx.get(lockRef)));
+      lockSnaps.forEach((lockSnap, index) => {
+        if (lockSnap.exists() && lockSnap.data().bookingId === bookingId) tx.delete(lockRefs[index]);
+      });
       tx.update(bookingRef, { status: 'ملغي', updatedAt: new Date().toISOString() });
     });
   } catch (err) { handleFirestoreError(err, OperationType.UPDATE, `bookings/${bookingId}`); }
