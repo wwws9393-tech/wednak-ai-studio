@@ -12,6 +12,9 @@ export interface Hall {
   rating: number;
   reviewsCount: number;
   images: string[];
+  coverImage?: string;
+  profileImageUrl?: string;
+  phone?: string;
   description: string;
   deposit: number;
   depositFormatted: string;
@@ -70,7 +73,7 @@ export interface Booking {
   itemName: string;
   itemLocation: string;
   itemImage: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   timeSlot: string;
   startTime?: string;
   endTime?: string;
@@ -135,6 +138,8 @@ export interface UserProfile {
   profileCompleted?: boolean;
   hallName?: string;
   serviceCategory?: string;
+  profileImageUrl?: string;
+  coverImageUrl?: string;
   createdAt?: string;
   updatedAt?: string;
 }
