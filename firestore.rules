@@ -71,21 +71,27 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Atomic 30-minute reservation locks. Only the booking's target owner can create them;
-    // either booking party may delete its own locks during cancellation.
+    // Public availability contains no requester identity, phone, name, or other private data.
+    // It only marks 30-minute segments as occupied for one item/date.
     match /bookingLocks/{lockId} {
-      allow read: if signedIn()
-        && (resource.data.requesterId == request.auth.uid
-          || resource.data.targetOwnerId == request.auth.uid
-          || isAdmin());
+      allow read: if true;
+
       allow create: if signedIn()
         && request.resource.data.targetOwnerId == request.auth.uid
-        && request.resource.data.requesterId != request.auth.uid;
+        && request.resource.data.keys().hasOnly([
+          'bookingId', 'itemId', 'date', 'minute', 'targetOwnerId', 'createdAt'
+        ]);
+
       allow update: if false;
-      allow delete: if signedIn()
-        && (resource.data.requesterId == request.auth.uid
-          || resource.data.targetOwnerId == request.auth.uid
-          || isAdmin());
+
+      allow delete: if signedIn() && (
+        resource.data.targetOwnerId == request.auth.uid
+        || isAdmin()
+        || (
+          exists(/databases/$(database)/documents/bookings/$(resource.data.bookingId))
+          && get(/databases/$(database)/documents/bookings/$(resource.data.bookingId)).data.requesterId == request.auth.uid
+        )
+      );
     }
 
     match /halls/{hallId} {
