@@ -260,7 +260,7 @@ export function App() {
 
   // Render Logic based on Role and Tab
   const renderRoleSpecificView = () => {
-    if (currentUser.accountType === 'صاحب قاعة') {
+    if (currentUser.accountType === 'صاحب قاعة' && currentTab === 'home') {
       return (
         <OwnerHomeView
           currentUser={currentUser}
@@ -273,7 +273,7 @@ export function App() {
       );
     }
 
-    if (currentUser.accountType === 'مزود خدمة') {
+    if (currentUser.accountType === 'مزود خدمة' && currentTab === 'home') {
       return (
         <ServiceProviderHomeView
           currentUser={currentUser}
