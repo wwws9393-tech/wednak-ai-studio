@@ -1,9 +1,22 @@
-import React, { useState } from 'react';
-import { X, User, Lock, Phone, Sparkles, Building2, Camera, LogOut, CheckCircle2, ShieldCheck, ArrowRight, Eye, KeyRound, ShieldAlert, Check } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  X,
+  User,
+  Phone,
+  Sparkles,
+  Building2,
+  Camera,
+  LogOut,
+  ArrowRight,
+  Eye,
+  KeyRound,
+  ShieldAlert,
+  Check,
+} from 'lucide-react';
+import { ConfirmationResult, RecaptchaVerifier, signInWithPhoneNumber, signOut } from 'firebase/auth';
 import { AccountType, UserProfile } from '../types';
-import { fetchUserFromFirestore, findUserByPhoneFromFirestore, saveUserToFirestore, GUEST_ANONYMOUS_USER } from '../data/usersDatabase';
-import { ensureFirebaseAuth, auth } from '../lib/firebase';
-import { signOut } from 'firebase/auth';
+import { GUEST_ANONYMOUS_USER } from '../data/usersDatabase';
+import { auth, fetchUserFromFirestore, saveUserToFirestore } from '../lib/firebase';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -13,6 +26,46 @@ interface AuthModalProps {
   onLogout: () => void;
 }
 
+type AuthMode = 'select' | 'login' | 'reg_customer' | 'reg_owner' | 'reg_provider';
+
+const IRAQI_GOVERNORATES = [
+  'بغداد', 'البصرة', 'نينوى', 'أربيل', 'النجف', 'كربلاء', 'القادسية', 'بابل', 'واسط',
+  'ذي قار', 'ميسان', 'المثنى', 'الأنبار', 'صلاح الدين', 'ديالى', 'كركوك', 'دهوك', 'السليمانية',
+];
+
+const SERVICE_CATEGORIES = [
+  'تصوير وفيديو',
+  'تزيين وكوشة',
+  'فرقة وسنترال',
+  'سيارات زفاف',
+  'صالون ومكياج عرائس',
+  'ضيافة وبوفيه',
+];
+
+function toEnglishDigits(value: string): string {
+  const arabic = '٠١٢٣٤٥٦٧٨٩';
+  const eastern = '۰۱۲۳۴۵۶۷۸۹';
+  return value
+    .split('')
+    .map((char) => {
+      const a = arabic.indexOf(char);
+      if (a >= 0) return String(a);
+      const e = eastern.indexOf(char);
+      if (e >= 0) return String(e);
+      return char;
+    })
+    .join('');
+}
+
+function normalizeIraqiPhone(raw: string): string {
+  let value = toEnglishDigits(raw).trim().replace(/[\s()-]/g, '');
+  if (value.startsWith('00964')) value = `+964${value.slice(5)}`;
+  if (/^07\d{9}$/.test(value)) return `+964${value.slice(1)}`;
+  if (/^7\d{9}$/.test(value)) return `+964${value}`;
+  if (/^\+9647\d{9}$/.test(value)) return value;
+  throw new Error('أدخل رقم موبايل عراقي صحيح مثل 07701234567.');
+}
+
 export const AuthModal: React.FC<AuthModalProps> = ({
   isOpen,
   onClose,
@@ -20,477 +73,320 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onLoginSuccess,
   onLogout,
 }) => {
-  // Navigation mode between the main 4 choices and login
-  const [mode, setMode] = useState<'select' | 'guest' | 'login' | 'reg_customer' | 'reg_owner' | 'reg_provider'>('select');
-
-  // Form State
-  const [phone, setPhone] = useState('07701122334');
+  const [mode, setMode] = useState<AuthMode>('select');
+  const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
   const [city, setCity] = useState('بغداد');
   const [hallName, setHallName] = useState('');
-  const [serviceCategory, setServiceCategory] = useState<string>('تصوير وفيديو');
-  
-  // OTP Step
+  const [serviceCategory, setServiceCategory] = useState('تصوير وفيديو');
   const [otpSent, setOtpSent] = useState(false);
-  const [otpCode, setOtpCode] = useState('123456');
-
+  const [otpCode, setOtpCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const confirmationRef = useRef<ConfirmationResult | null>(null);
+  const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
+
+  useEffect(() => {
+    return () => {
+      recaptchaRef.current?.clear();
+      recaptchaRef.current = null;
+    };
+  }, []);
 
   if (!isOpen) return null;
 
-  // 1) Handle Direct Guest Login
-  const handleEnterAsGuest = async () => {
-    try {
-      await ensureFirebaseAuth();
-      onLoginSuccess(GUEST_ANONYMOUS_USER);
-      onClose();
-    } catch (err) {
-      console.error('Error entering as guest:', err);
-      onClose();
-    }
+  const resetForm = () => {
+    setOtpSent(false);
+    setOtpCode('');
+    setErrorMessage('');
+    setSuccessMsg('');
+    confirmationRef.current = null;
+    recaptchaRef.current?.clear();
+    recaptchaRef.current = null;
   };
 
-  // 2) Send OTP
-  const handleSendOtp = (e: React.FormEvent) => {
+  const selectMode = (nextMode: AuthMode) => {
+    resetForm();
+    setMode(nextMode);
+  };
+
+  const handleEnterAsGuest = () => {
+    // Guest browsing is intentionally local-only; a real Firebase identity is created only after OTP.
+    onLoginSuccess(GUEST_ANONYMOUS_USER);
+    onClose();
+  };
+
+  const buildRecaptcha = () => {
+    recaptchaRef.current?.clear();
+    const verifier = new RecaptchaVerifier(auth, 'wednak-recaptcha-container', {
+      size: 'invisible',
+      callback: () => undefined,
+      'expired-callback': () => setErrorMessage('انتهت صلاحية التحقق الأمني. حاول إرسال الرمز مرة أخرى.'),
+    });
+    recaptchaRef.current = verifier;
+    return verifier;
+  };
+
+  const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!phone.trim()) {
-      setErrorMessage('يرجى إدخال رقم الهاتف العراقي بشكل صحيح.');
-      return;
-    }
     setErrorMessage('');
+    setSuccessMsg('');
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      const normalizedPhone = normalizeIraqiPhone(phone);
+      const verifier = buildRecaptcha();
+      confirmationRef.current = await signInWithPhoneNumber(auth, normalizedPhone, verifier);
+      setPhone(normalizedPhone);
       setOtpSent(true);
-      setSuccessMsg(`تم إرسال رمز التحقق OTP إلى الرقم ${phone}`);
-    }, 400);
-  };
-
-  // 3) Complete Auth after OTP Code
-  const handleVerifyOtpAndProceed = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (otpCode !== '123456') {
-      setErrorMessage('رمز التحقق غير صحيح. الرمز الافتراضي للتجربة هو 123456');
-      return;
-    }
-
-    setIsLoading(true);
-    setErrorMessage('');
-
-    try {
-      const cleanPhone = phone.trim();
-      const firebaseUser = await ensureFirebaseAuth();
-
-      // Check if user with this phone already exists in Firestore!
-      const existingUser = await findUserByPhoneFromFirestore(cleanPhone);
-
-      if (existingUser) {
-        setSuccessMsg(`أهلاً بك مجدداً ${existingUser.name}! تم استعادة حسابك بنجاح.`);
-        onLoginSuccess(existingUser);
-        setTimeout(() => onClose(), 600);
-        return;
-      }
-
-      if (mode === 'login' && !existingUser) {
-        setErrorMessage(`لا يوجد حساب مسجل بالرقم ${phone}. يرجى اختيار أحد خيارات التسجيل أدناه.`);
-        setIsLoading(false);
-        return;
-      }
-
-      // New user registration based on chosen mode
-      let chosenAccountType: AccountType = 'زبون';
-      if (mode === 'reg_owner') chosenAccountType = 'صاحب قاعة';
-      if (mode === 'reg_provider') chosenAccountType = 'مزود خدمة';
-
-      const realUid = firebaseUser.uid;
-      const newUserDoc: UserProfile = {
-        id: realUid,
-        name: name.trim() || (mode === 'reg_owner' ? hallName : 'مستخدم ويدنك'),
-        phone: cleanPhone,
-        email: `${realUid}@wednak.app`,
-        city: city,
-        accountType: chosenAccountType,
-        hallName: mode === 'reg_owner' ? hallName : undefined,
-        serviceCategory: mode === 'reg_provider' ? serviceCategory : undefined,
-        isGuest: false,
-        profileCompleted: true,
-      };
-
-      if (chosenAccountType === 'صاحب قاعة') {
-        newUserDoc.ownedHallId = 'hall-1';
-      } else if (chosenAccountType === 'مزود خدمة') {
-        newUserDoc.ownedProviderId = 'provider-1';
-      }
-
-      await saveUserToFirestore(newUserDoc);
-      onLoginSuccess(newUserDoc);
-      setTimeout(() => onClose(), 400);
-    } catch (err) {
-      console.error(err);
-      setErrorMessage('حدث خطأ أثناء حفظ بيانات الحساب في Firestore');
+      setSuccessMsg(`تم إرسال رمز التحقق إلى ${normalizedPhone}`);
+    } catch (error) {
+      console.error('Firebase phone OTP send failed:', error);
+      setErrorMessage(error instanceof Error ? error.message : 'تعذر إرسال رمز التحقق. حاول مرة أخرى.');
+      recaptchaRef.current?.clear();
+      recaptchaRef.current = null;
     } finally {
       setIsLoading(false);
     }
   };
 
-  const resetForm = () => {
-    setOtpSent(false);
+  const handleVerifyOtpAndProceed = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!confirmationRef.current) {
+      setErrorMessage('أرسل رمز التحقق أولاً.');
+      return;
+    }
+    if (!/^\d{6}$/.test(toEnglishDigits(otpCode))) {
+      setErrorMessage('رمز التحقق يجب أن يتكون من 6 أرقام.');
+      return;
+    }
+
+    setIsLoading(true);
     setErrorMessage('');
-    setSuccessMsg('');
+    try {
+      const credential = await confirmationRef.current.confirm(toEnglishDigits(otpCode));
+      const uid = credential.user.uid;
+      const existingUser = await fetchUserFromFirestore(uid);
+
+      if (existingUser) {
+        setSuccessMsg(`أهلاً بك مجدداً ${existingUser.name}`);
+        onLoginSuccess(existingUser);
+        onClose();
+        return;
+      }
+
+      if (mode === 'login') {
+        await signOut(auth);
+        setErrorMessage('رقم الهاتف موثّق لكنه لا يملك ملف Wedنك. اختر نوع الحساب لإنشاء الملف.');
+        setOtpSent(false);
+        confirmationRef.current = null;
+        return;
+      }
+
+      let accountType: AccountType = 'زبون';
+      if (mode === 'reg_owner') accountType = 'صاحب قاعة';
+      else if (mode === 'reg_provider') accountType = 'مزود خدمة';
+
+      const displayName = name.trim() || (mode === 'reg_owner' ? hallName.trim() : 'مستخدم ويدنك');
+      if (!displayName) throw new Error('يرجى إدخال الاسم.');
+
+      const newUser: UserProfile = {
+        id: uid,
+        name: displayName,
+        phone,
+        email: '',
+        city,
+        accountType,
+        hallName: mode === 'reg_owner' ? hallName.trim() : undefined,
+        serviceCategory: mode === 'reg_provider' ? serviceCategory : undefined,
+        isGuest: false,
+        isGuestConverted: false,
+        profileCompleted: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      const saved = await saveUserToFirestore(newUser);
+      onLoginSuccess(saved);
+      setSuccessMsg('تم إنشاء الحساب بنجاح.');
+      onClose();
+    } catch (error) {
+      console.error('Firebase OTP verification failed:', error);
+      setErrorMessage(error instanceof Error ? error.message : 'تعذر التحقق من الرمز.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto dir-rtl" id="auth-modal-overlay">
-      <div className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-gray-200 animate-in fade-in zoom-in-95 duration-200 my-auto">
-        
-        {/* Header */}
+      <div className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-gray-200 my-auto">
+        <div id="wednak-recaptcha-container" />
+
         <div className="p-5 bg-gradient-to-r from-emerald-900 via-emerald-800 to-amber-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-300 flex items-center justify-center font-bold">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-300 flex items-center justify-center">
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold">تسجيل الدخول والدور في Wedنك</h2>
-              <p className="text-[11px] text-amber-200">اختر طريقة الدخول للبدء بتصفح القاعات والخدمات</p>
+              <h2 className="text-base font-bold">الدخول إلى Wedنك</h2>
+              <p className="text-[11px] text-amber-200">تصفح كضيف أو سجل برقم هاتفك الحقيقي</p>
             </div>
           </div>
-
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
-            id="close-auth-modal-btn"
-          >
+          <button onClick={onClose} className="p-1.5 rounded-full bg-white/10 hover:bg-white/20" aria-label="إغلاق">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Current Active Account Status */}
         <div className="px-5 pt-4">
           <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-2xl flex items-center justify-between text-xs">
             <div>
-              <span className="text-[10px] text-gray-500 block">الحساب المتصل حالياً:</span>
+              <span className="text-[10px] text-gray-500 block">الحساب الحالي</span>
               <span className="font-bold text-emerald-900">{currentUser.name}</span>
-              <span className={`text-[10px] px-2 py-0.5 rounded-full mr-2 font-black ${
-                currentUser.isGuest
-                  ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                  : 'bg-emerald-100 text-emerald-800'
-              }`}>
-                {currentUser.isGuest ? 'ضيف Guest' : currentUser.accountType}
+              <span className="text-[10px] px-2 py-0.5 rounded-full mr-2 font-black bg-amber-100 text-amber-800">
+                {currentUser.isGuest ? 'ضيف' : currentUser.accountType}
               </span>
             </div>
-
             {!currentUser.isGuest && (
               <button
                 onClick={() => {
                   onLogout();
-                  setMode('select');
-                  resetForm();
+                  selectMode('select');
                 }}
-                className="px-3 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors"
-                id="auth-logout-btn"
+                className="px-3 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-xl font-bold flex items-center gap-1"
               >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>تسجيل الخروج</span>
+                <LogOut className="w-3.5 h-3.5" /> تسجيل الخروج
               </button>
             )}
           </div>
         </div>
 
-        {/* Modal Content Body */}
         <div className="p-5 space-y-4">
-
-          {/* Messages */}
           {errorMessage && (
             <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs font-bold flex items-center gap-2">
-              <ShieldAlert className="w-4 h-4 shrink-0" />
-              <span>{errorMessage}</span>
+              <ShieldAlert className="w-4 h-4 shrink-0" /> {errorMessage}
             </div>
           )}
-
           {successMsg && (
             <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs font-bold flex items-center gap-2">
-              <Check className="w-4 h-4 shrink-0 text-emerald-600" />
-              <span>{successMsg}</span>
+              <Check className="w-4 h-4 shrink-0" /> {successMsg}
             </div>
           )}
 
-          {/* MODE: Select from the 4 main paths */}
-          {mode === 'select' && (
+          {mode === 'select' ? (
             <div className="space-y-3">
-              <h3 className="text-xs font-bold text-gray-800 mb-2">اختر طريقة الدخول المناسبة لك:</h3>
-
-              {/* Option 1: Guest */}
-              <button
-                onClick={handleEnterAsGuest}
-                className="w-full p-3.5 bg-amber-50/60 hover:bg-amber-100/70 border border-amber-300/80 rounded-2xl text-right transition-all flex items-center justify-between group"
-                id="btn-login-as-guest"
-              >
+              <button onClick={handleEnterAsGuest} className="w-full p-3.5 bg-amber-50 border border-amber-300 rounded-2xl text-right flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500 text-white font-bold flex items-center justify-center shadow-xs">
-                    <Eye className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="font-bold text-xs text-amber-950 flex items-center gap-1">
-                      1) الدخول كضيف (Guest)
-                      <span className="text-[9px] bg-amber-200 text-amber-900 px-1.5 py-0.2 rounded font-black">بدون تسجيل</span>
-                    </div>
-                    <div className="text-[10px] text-amber-800">تصفح القاعات ومزودي الخدمات والتفاصيل فوراً</div>
-                  </div>
+                  <Eye className="w-5 h-5 text-amber-700" />
+                  <div><div className="font-bold text-xs">الدخول كضيف</div><div className="text-[10px] text-amber-800">تصفح بدون تسجيل، والتوثيق مطلوب عند الحجز أو الحفظ</div></div>
                 </div>
-                <ArrowRight className="w-4 h-4 text-amber-700 rotate-180 group-hover:-translate-x-1 transition-transform" />
+                <ArrowRight className="w-4 h-4 rotate-180" />
               </button>
 
-              {/* Option 2: Register as Customer */}
-              <button
-                onClick={() => { setMode('reg_customer'); resetForm(); }}
-                className="w-full p-3.5 bg-emerald-50/60 hover:bg-emerald-100/70 border border-emerald-200 rounded-2xl text-right transition-all flex items-center justify-between group"
-                id="btn-register-customer"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-700 text-white font-bold flex items-center justify-center shadow-xs">
-                    <User className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="font-bold text-xs text-emerald-950">2) التسجيل كزبون</div>
-                    <div className="text-[10px] text-emerald-800">لحجز القاعات والخدمات ومتابعة حالة الطلبات</div>
-                  </div>
-                </div>
-                <ArrowRight className="w-4 h-4 text-emerald-700 rotate-180 group-hover:-translate-x-1 transition-transform" />
+              <button onClick={() => selectMode('reg_customer')} className="w-full p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-right flex items-center gap-3">
+                <User className="w-5 h-5 text-emerald-700" /><div><div className="font-bold text-xs">التسجيل كزبون</div><div className="text-[10px] text-emerald-800">للحجز والمفضلة ومتابعة الطلبات</div></div>
               </button>
 
-              {/* Option 3: Register as Hall Owner */}
-              <button
-                onClick={() => { setMode('reg_owner'); resetForm(); }}
-                className="w-full p-3.5 bg-purple-50/60 hover:bg-purple-100/70 border border-purple-200 rounded-2xl text-right transition-all flex items-center justify-between group"
-                id="btn-register-owner"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-purple-700 text-white font-bold flex items-center justify-center shadow-xs">
-                    <Building2 className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="font-bold text-xs text-purple-950">3) التسجيل كصاحب قاعة</div>
-                    <div className="text-[10px] text-purple-800">لإضافة واستقبال حجوزات القاعة وإدارة المواعيد</div>
-                  </div>
-                </div>
-                <ArrowRight className="w-4 h-4 text-purple-700 rotate-180 group-hover:-translate-x-1 transition-transform" />
+              <button onClick={() => selectMode('reg_owner')} className="w-full p-3.5 bg-purple-50 border border-purple-200 rounded-2xl text-right flex items-center gap-3">
+                <Building2 className="w-5 h-5 text-purple-700" /><div><div className="font-bold text-xs">التسجيل كصاحب قاعة</div><div className="text-[10px] text-purple-800">لإدارة القاعة والحجوزات والمحتوى</div></div>
               </button>
 
-              {/* Option 4: Register as Service Provider */}
-              <button
-                onClick={() => { setMode('reg_provider'); resetForm(); }}
-                className="w-full p-3.5 bg-blue-50/60 hover:bg-blue-100/70 border border-blue-200 rounded-2xl text-right transition-all flex items-center justify-between group"
-                id="btn-register-provider"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center shadow-xs">
-                    <Camera className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="font-bold text-xs text-blue-950">4) التسجيل كمزود خدمة</div>
-                    <div className="text-[10px] text-blue-800">للمصورين، الكوشات، الصالونات، والبوفيهات</div>
-                  </div>
-                </div>
-                <ArrowRight className="w-4 h-4 text-blue-700 rotate-180 group-hover:-translate-x-1 transition-transform" />
+              <button onClick={() => selectMode('reg_provider')} className="w-full p-3.5 bg-blue-50 border border-blue-200 rounded-2xl text-right flex items-center gap-3">
+                <Camera className="w-5 h-5 text-blue-700" /><div><div className="font-bold text-xs">التسجيل كمزود خدمة</div><div className="text-[10px] text-blue-800">لإدارة الخدمة والحجوزات والعروض</div></div>
               </button>
 
-              {/* Sign In Link for existing accounts */}
-              <div className="pt-2 border-t border-gray-100 text-center">
-                <button
-                  onClick={() => { setMode('login'); resetForm(); }}
-                  className="text-xs font-bold text-emerald-800 hover:text-emerald-900 underline flex items-center justify-center gap-1 mx-auto"
-                  id="btn-existing-user-login"
-                >
-                  <KeyRound className="w-3.5 h-3.5" />
-                  <span>لديك حساب سابق برقم الهاتف؟ تسجيل الدخول</span>
-                </button>
-              </div>
+              <button onClick={() => selectMode('login')} className="mx-auto text-xs font-bold text-emerald-800 underline flex items-center gap-1">
+                <KeyRound className="w-3.5 h-3.5" /> لدي حساب سابق
+              </button>
             </div>
-          )}
-
-          {/* FORM: Registration or Login Step */}
-          {mode !== 'select' && (
+          ) : (
             <div className="space-y-3">
               <div className="flex items-center justify-between border-b border-gray-100 pb-2">
-                <button
-                  onClick={() => { setMode('select'); resetForm(); }}
-                  className="text-xs font-bold text-gray-500 hover:text-emerald-800 flex items-center gap-1"
-                >
-                  <ArrowRight className="w-4 h-4" />
-                  <span>الرجوع للخيارات</span>
+                <button onClick={() => selectMode('select')} className="text-xs font-bold text-gray-500 flex items-center gap-1">
+                  <ArrowRight className="w-4 h-4" /> الرجوع
                 </button>
                 <span className="text-xs font-bold text-emerald-900">
-                  {mode === 'login' && 'تسجيل الدخول لحساب سابق'}
-                  {mode === 'reg_customer' && 'إنشاء حساب زبون جديد'}
-                  {mode === 'reg_owner' && 'إنشاء حساب صاحب قاعة'}
-                  {mode === 'reg_provider' && 'إنشاء حساب مزود خدمة'}
+                  {mode === 'login' ? 'تسجيل الدخول' : mode === 'reg_customer' ? 'حساب زبون' : mode === 'reg_owner' ? 'حساب صاحب قاعة' : 'حساب مزود خدمة'}
                 </span>
               </div>
 
               {!otpSent ? (
-                /* Step 1: Input Details & Phone */
                 <form onSubmit={handleSendOtp} className="space-y-3">
-                  {mode === 'reg_customer' && (
+                  {mode !== 'login' && (
                     <div>
-                      <label className="text-xs font-bold text-gray-800 block mb-1">الاسم الكامل:</label>
-                      <input
-                        type="text"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="أدخل اسمك الكامل"
-                        className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs outline-none focus:ring-2 focus:ring-emerald-600"
-                        required
-                      />
+                      <label className="text-xs font-bold block mb-1">الاسم</label>
+                      <input value={name} onChange={(e) => setName(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-xs" required />
                     </div>
                   )}
 
                   {mode === 'reg_owner' && (
-                    <>
-                      <div>
-                        <label className="text-xs font-bold text-gray-800 block mb-1">اسم صاحب الحساب / المدبر:</label>
-                        <input
-                          type="text"
-                          value={name}
-                          onChange={(e) => setName(e.target.value)}
-                          placeholder="مثال: سيف مجيد"
-                          className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs outline-none focus:ring-2 focus:ring-emerald-600"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-bold text-gray-800 block mb-1">اسم القاعة الخاص بك:</label>
-                        <input
-                          type="text"
-                          value={hallName}
-                          onChange={(e) => setHallName(e.target.value)}
-                          placeholder="مثال: قاعة الملكة الفخمة"
-                          className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs outline-none focus:ring-2 focus:ring-emerald-600"
-                          required
-                        />
-                      </div>
-                    </>
+                    <div>
+                      <label className="text-xs font-bold block mb-1">اسم القاعة</label>
+                      <input value={hallName} onChange={(e) => setHallName(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-xs" required />
+                    </div>
                   )}
 
                   {mode === 'reg_provider' && (
-                    <>
-                      <div>
-                        <label className="text-xs font-bold text-gray-800 block mb-1">اسم المقدم / الاستوديو:</label>
-                        <input
-                          type="text"
-                          value={name}
-                          onChange={(e) => setName(e.target.value)}
-                          placeholder="مثال: أحمد المصور"
-                          className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs outline-none focus:ring-2 focus:ring-emerald-600"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-bold text-gray-800 block mb-1">نوع الخدمة:</label>
-                        <select
-                          value={serviceCategory}
-                          onChange={(e) => setServiceCategory(e.target.value)}
-                          className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-bold text-gray-800 outline-none"
-                        >
-                          <option value="تصوير وفيديو">تصوير وفيديو</option>
-                          <option value="تزيين وكوشة">تزيين وكوشة</option>
-                          <option value="فرقة وسنترال">فرقة وسنترال</option>
-                          <option value="سيارات زفاف">سيارات زفاف</option>
-                          <option value="صالون ومكياج عرائس">صالون ومكياج عرائس</option>
-                          <option value="ضيافة وبوفيه">ضيافة وبوفيه</option>
-                        </select>
-                      </div>
-                    </>
+                    <div>
+                      <label className="text-xs font-bold block mb-1">نوع الخدمة</label>
+                      <select value={serviceCategory} onChange={(e) => setServiceCategory(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-xs">
+                        {SERVICE_CATEGORIES.map((category) => <option key={category}>{category}</option>)}
+                      </select>
+                    </div>
                   )}
 
                   <div>
-                    <label className="text-xs font-bold text-gray-800 block mb-1">رقم الهاتف العراقي:</label>
+                    <label className="text-xs font-bold block mb-1">رقم الهاتف العراقي</label>
                     <div className="relative">
                       <Phone className="w-4 h-4 text-gray-400 absolute right-3 top-2.5" />
-                      <input
-                        type="text"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder="07701122334"
-                        className="w-full pr-9 pl-3 py-2 rounded-xl border border-gray-300 text-xs text-gray-900 outline-none focus:ring-2 focus:ring-emerald-600 dir-ltr text-left font-mono"
-                        required
-                      />
+                      <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07701234567" className="w-full pr-9 pl-3 py-2 rounded-xl border text-xs dir-ltr text-left" required />
                     </div>
                   </div>
 
                   {mode !== 'login' && (
                     <div>
-                      <label className="text-xs font-bold text-gray-800 block mb-1">المحافظة:</label>
-                      <select
-                        value={city}
-                        onChange={(e) => setCity(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs text-gray-900 outline-none"
-                      >
-                        {['بغداد', 'أربيل', 'البصرة', 'النجف', 'كربلاء', 'الموصل', 'السليمانية'].map((c) => (
-                          <option key={c} value={c}>{c}</option>
-                        ))}
+                      <label className="text-xs font-bold block mb-1">المحافظة</label>
+                      <select value={city} onChange={(e) => setCity(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-xs">
+                        {IRAQI_GOVERNORATES.map((governorate) => <option key={governorate}>{governorate}</option>)}
                       </select>
                     </div>
                   )}
 
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
-                    id="btn-send-otp-code"
-                  >
-                    <span>{isLoading ? 'جاري الإرسال...' : 'إرسال رمز التحقق (OTP)'}</span>
+                  <button type="submit" disabled={isLoading} className="w-full py-2.5 bg-emerald-800 text-white font-bold text-xs rounded-xl disabled:opacity-50">
+                    {isLoading ? 'جاري الإرسال...' : 'إرسال رمز التحقق'}
                   </button>
                 </form>
               ) : (
-                /* Step 2: Input OTP Verification Code */
                 <form onSubmit={handleVerifyOtpAndProceed} className="space-y-3">
-                  <div className="bg-amber-50 p-3 rounded-2xl border border-amber-200 text-xs space-y-1">
-                    <span className="font-bold text-amber-900 block">رمز التحقق الافتراضي لتجربة النظام: 123456</span>
-                    <span className="text-[11px] text-amber-800 block">تم إرسال الرسالة إلى الرقم: {phone}</span>
+                  <div className="bg-amber-50 p-3 rounded-2xl border border-amber-200 text-xs text-amber-900">
+                    أدخل الرمز الحقيقي الذي وصلك برسالة SMS إلى {phone}.
                   </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-gray-800 block mb-1">أدخل رمز OTP المتكون من 6 أرقام:</label>
-                    <input
-                      type="text"
-                      value={otpCode}
-                      onChange={(e) => setOtpCode(e.target.value)}
-                      placeholder="123456"
-                      className="w-full px-3 py-2.5 rounded-xl border border-gray-300 text-center text-lg font-mono font-bold tracking-widest text-emerald-900 outline-none focus:ring-2 focus:ring-emerald-600"
-                      maxLength={6}
-                      required
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs rounded-xl shadow-md transition-all"
-                    id="btn-confirm-otp"
-                  >
-                    {isLoading ? 'جاري التحقق وقراءة الحساب...' : 'تأكيد الرمز والدخول إلى Wedنك'}
+                  <input
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value)}
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    placeholder="000000"
+                    className="w-full px-3 py-2.5 rounded-xl border text-center text-lg font-mono font-bold tracking-widest"
+                    required
+                  />
+                  <button type="submit" disabled={isLoading} className="w-full py-2.5 bg-emerald-800 text-white font-bold text-xs rounded-xl disabled:opacity-50">
+                    {isLoading ? 'جاري التحقق...' : 'تأكيد الرمز'}
+                  </button>
+                  <button type="button" onClick={() => { setOtpSent(false); confirmationRef.current = null; }} className="w-full text-xs font-bold text-gray-500 underline">
+                    تغيير الرقم أو إعادة الإرسال
                   </button>
                 </form>
               )}
             </div>
           )}
-
         </div>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-gray-200 bg-gray-50 flex items-center justify-between text-xs text-gray-500">
-          <span className="font-semibold text-[11px]">Wedنك Firebase Phone Authentication System</span>
-          <button
-            onClick={onClose}
-            className="px-4 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold rounded-xl"
-          >
-            إغلاق
-          </button>
-        </div>
-
+        <div className="p-4 border-t bg-gray-50 text-[11px] text-gray-500 text-center">
+          التحقق يتم عبر Firebase Phone Authentication. لا يوجد رمز تجريبي ثابت.
         </div>
       </div>
+    </div>
   );
 };
