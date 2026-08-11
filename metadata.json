@@ -1,0 +1,8 @@
+{
+  "name": "Remix ويدنك - حجز قاعات الأعراس",
+  "description": "تطبيق ويدنك لاستكشاف وحجز قاعات الأعراس والمناسبات في العراق بسهولة",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,72 @@
+import { FeedPost } from '../types';
+
+export const INITIAL_POSTS: FeedPost[] = [
+  {
+    id: 'post-1',
+    authorId: 'owner-1',
+    authorName: 'قاعة الملكة الفاخرة',
+    authorAvatar: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=400&q=80',
+    authorRole: 'صاحب قاعة',
+    targetType: 'hall',
+    targetId: 'hall-1',
+    title: 'تجهيزات كوشة 2026 الملكية الجديدة ✨👰',
+    caption: 'نقدم لكم أحدث تصاميم الكوشة لعام 2026 في قاعة الملكة - الجادرية! احجز الآن واحصل على بوفيه مجاني مخصص لـ 50 شخص إضافي عند الحجز قبل نهاية الشهر.',
+    mediaType: 'image',
+    mediaUrl: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1200&q=80',
+    likesCount: 342,
+    sharesCount: 58,
+    createdAt: 'قبل ساعتين',
+    city: 'بغداد'
+  },
+  {
+    id: 'post-2',
+    authorId: 'provider-user-1',
+    authorName: 'استوديو العريس الملكي',
+    authorAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+    authorRole: 'مزود خدمة',
+    targetType: 'provider',
+    targetId: 'provider-1',
+    title: 'لقطات من حفل زفاف أمس في أربيل 🎥💍',
+    caption: 'تغطيتنا السينمائية لحفل الزفاف الملكي باستخدام تقنيات Dron و 4K. نتمنى للعروسين حياة ملؤها السعادة والهناء!',
+    mediaType: 'image',
+    mediaUrl: 'https://images.unsplash.com/photo-1537633552985-df8429e8048b?auto=format&fit=crop&w=1200&q=80',
+    likesCount: 512,
+    sharesCount: 89,
+    createdAt: 'قبل 5 ساعات',
+    city: 'بغداد'
+  },
+  {
+    id: 'post-3',
+    authorId: 'owner-3',
+    authorName: 'حدائق اليرموك للمناسبات',
+    authorAvatar: 'https://images.unsplash.com/photo-1469371670807-013ccf25f16a?auto=format&fit=crop&w=400&q=80',
+    authorRole: 'صاحب قاعة',
+    targetType: 'hall',
+    targetId: 'hall-3',
+    title: 'أجواء الحفلات الخارجية في اليرموك 🌿🌸',
+    caption: 'تمتع بأجواء طبيعية ساحرة ومساحات خضراء واسعة لحفلات عقد القران والأعراس الخارجيّة. خيارات إضاءة مخصصة كلياً حسب رغبتكم.',
+    mediaType: 'image',
+    mediaUrl: 'https://images.unsplash.com/photo-1523438885200-e635ba2c371e?auto=format&fit=crop&w=1200&q=80',
+    likesCount: 275,
+    sharesCount: 34,
+    createdAt: 'أمس',
+    city: 'بغداد'
+  },
+  {
+    id: 'post-4',
+    authorId: 'provider-user-2',
+    authorName: 'مركز رويال بيوتي',
+    authorAvatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=400&q=80',
+    authorRole: 'مزود خدمة',
+    targetType: 'provider',
+    targetId: 'provider-2',
+    title: 'إطلالة عروس اليوم بتوقيع رويال بيوتي 💄✨',
+    caption: 'مكياج ناعم يبرز جمال العروس الطبيعي مع تسريحة شعر تركية راقية. احجزي موعدكِ الآن لموسم الصيف.',
+    mediaType: 'image',
+    mediaUrl: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=1200&q=80',
+    likesCount: 680,
+    sharesCount: 110,
+    createdAt: 'قبل يومين',
+    city: 'أربيل'
+  }
+];
