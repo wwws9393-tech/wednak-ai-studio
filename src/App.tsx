@@ -166,22 +166,6 @@ export function App() {
     );
   };
 
-  const handleChangeAccountType = async (newType: AccountType) => {
-    const updatedProfile: UserProfile = {
-      ...currentUser,
-      accountType: newType,
-    };
-
-    if (newType === 'صاحب قاعة') {
-      updatedProfile.ownedHallId = 'hall-1';
-    } else if (newType === 'مزود خدمة') {
-      updatedProfile.ownedProviderId = 'provider-1';
-    }
-
-    setCurrentUser(updatedProfile);
-    await saveUserToFirestore(updatedProfile);
-  };
-
   const handleLoginSuccess = async (userDoc: UserProfile) => {
     setCurrentUser(userDoc);
     setCurrentTab('home');
@@ -502,7 +486,7 @@ export function App() {
             complaints={complaints}
             currentUser={currentUser}
             onSubmitComplaint={handleCreateComplaint}
-            isAdmin={currentUser.accountType === 'مدير Admin' || currentUser.accountType === 'مدير'}
+            isAdmin={false}
             onUpdateComplaintStatus={handleUpdateComplaintStatus}
           />
         );
@@ -537,7 +521,6 @@ export function App() {
         favoritesCount={favoriteIds.length}
         unreadNotificationsCount={notifications.filter((n) => !n.read).length}
         currentAccountType={currentUser.accountType}
-        onChangeAccountType={handleChangeAccountType}
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
       />
 
@@ -565,7 +548,9 @@ export function App() {
         onClose={() => setSelectedHallForModal(null)}
         isFavorite={selectedHallForModal ? favoriteIds.includes(selectedHallForModal.id) : false}
         onToggleFavorite={() => selectedHallForModal && handleToggleFavorite(selectedHallForModal.id, 'hall')}
-        onOpenBookingModal={(hall) => {
+        currentUser={currentUser}
+        bookings={bookings}
+        onBookHall={(hall) => {
           setSelectedHallForModal(null);
           setBookingItemForModal({ type: 'hall', data: hall });
         }}
@@ -577,7 +562,9 @@ export function App() {
         onClose={() => setSelectedProviderForModal(null)}
         isFavorite={selectedProviderForModal ? favoriteIds.includes(selectedProviderForModal.id) : false}
         onToggleFavorite={() => selectedProviderForModal && handleToggleFavorite(selectedProviderForModal.id, 'provider')}
-        onOpenBookingModal={(provider) => {
+        currentUser={currentUser}
+        bookings={bookings}
+        onBookProvider={(provider) => {
           setSelectedProviderForModal(null);
           setBookingItemForModal({ type: 'provider', data: provider });
         }}
