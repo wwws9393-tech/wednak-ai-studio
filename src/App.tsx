@@ -37,6 +37,7 @@ import {
   toggleUserFavoriteInFirestore,
   subscribeComplaints,
   createComplaintInFirestore,
+  updateComplaintStatusInFirestore,
   seedInitialDataIfEmpty,
   subscribeHalls,
   subscribeServiceProviders,
@@ -237,6 +238,19 @@ export function App() {
       relatedItemName: data.relatedItemName,
       description: data.description,
     });
+  };
+
+  const handleUpdateComplaintStatus = async (complaintId: string, status: Complaint['status'], adminReply?: string) => {
+    await updateComplaintStatusInFirestore(complaintId, status, adminReply);
+  };
+
+  const handleUpdateProfile = async (updatedFields: Partial<UserProfile>) => {
+    const updatedUser = {
+      ...currentUser,
+      ...updatedFields,
+    };
+    setCurrentUser(updatedUser);
+    await saveUserToFirestore(updatedUser);
   };
 
   const handleCreatePost = async (postData: Omit<FeedPost, 'id' | 'createdAt' | 'likesCount' | 'sharesCount'>) => {

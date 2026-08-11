@@ -14,8 +14,8 @@ interface ProfileViewProps {
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
   currentUser = { id: 'guest', name: 'زائر', phone: '07700000000', email: '', city: 'بغداد', accountType: 'زبون' },
-  onUpdateProfile = () => {},
-  onSelectTab = () => {},
+  onUpdateProfile = (_updated: Partial<UserProfile>) => {},
+  onSelectTab = (_tab: string) => {},
   onOpenPrivacyModal = () => {},
   onOpenTermsModal = () => {},
   onOpenSupportModal = () => {},

@@ -496,6 +496,23 @@ export async function createComplaintInFirestore(complaint: Omit<Complaint, 'id'
   return newComplaint;
 }
 
+export async function updateComplaintStatusInFirestore(complaintId: string, status: Complaint['status'], adminReply?: string) {
+  const q = query(collection(db, 'complaints'), where('id', '==', complaintId));
+  try {
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const docRef = snap.docs[0].ref;
+      await updateDoc(docRef, {
+        status,
+        ...(adminReply ? { adminReply } : {}),
+        updatedAt: new Date().toISOString(),
+      });
+    }
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `complaints/${complaintId}`);
+  }
+}
+
 // Data Seed Function to populate initial Halls, Providers, Posts into Firestore if empty
 export async function seedInitialDataIfEmpty() {
   try {

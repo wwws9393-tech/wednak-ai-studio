@@ -13,7 +13,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
   currentUser = { id: 'admin', name: 'مدير النظام', phone: '07700000000', email: '', city: 'بغداد', accountType: 'مدير Admin' },
   complaints = [],
   bookings = [],
-  onUpdateComplaintStatus = () => {},
+  onUpdateComplaintStatus = (_id: string, _status: Complaint['status'], _reply?: string) => {},
 }) => {
   const pendingComplaints = complaints.filter((c) => c.status !== 'تمت المعالجة');
 
