@@ -339,7 +339,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     <label className="text-xs font-bold block mb-1">رقم الهاتف العراقي</label>
                     <div className="relative">
                       <Phone className="w-4 h-4 text-gray-400 absolute right-3 top-2.5" />
-                      <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07701234567" className="w-full pr-9 pl-3 py-2 rounded-xl border text-xs dir-ltr text-left" required />
+                      <input type="tel" inputMode="numeric" maxLength={11} value={phone} onChange={(e) => setPhone(toEnglishDigits(e.target.value).replace(/\D/g, '').slice(0, 11))} placeholder="07701234567" className="w-full pr-9 pl-3 py-2 rounded-xl border text-xs dir-ltr text-left" required />
                     </div>
                   </div>
 

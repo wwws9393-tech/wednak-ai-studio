@@ -19,12 +19,35 @@ interface BookingModalProps {
   }) => Promise<void> | void;
 }
 
-type Slot = { label: string; startTime: string; endTime: string };
-const SLOTS: Slot[] = [
-  { label: 'صباحي (10:00 ص - 2:00 ظ)', startTime: '10:00', endTime: '14:00' },
-  { label: 'مسائي (6:00 م - 11:00 م)', startTime: '18:00', endTime: '23:00' },
-  { label: 'ليلي سهرة (11:00 م - 2:00 ص)', startTime: '23:00', endTime: '02:00' },
+type PeriodKey = 'morning' | 'evening' | 'night';
+type Period = { key: PeriodKey; label: string; start: number; end: number };
+const PERIODS: Period[] = [
+  { key: 'morning', label: 'صباحي', start: 10, end: 14 },
+  { key: 'evening', label: 'مسائي', start: 18, end: 23 },
+  { key: 'night', label: 'ليلي', start: 23, end: 26 },
 ];
+
+function hourToTime(hour: number): string {
+  const normalized = hour % 24;
+  return `${String(normalized).padStart(2, '0')}:00`;
+}
+
+function hourLabel(hour: number): string {
+  const h = hour % 24;
+  const suffix = h < 12 ? 'ص' : 'م';
+  const display = h % 12 || 12;
+  return `${display}:00 ${suffix}`;
+}
+
+function minutesForRange(startTime: string, endTime: string): number[] {
+  const toMinutes = (time: string) => { const [h, m] = time.split(':').map(Number); return h * 60 + m; };
+  const start = toMinutes(startTime);
+  let end = toMinutes(endTime);
+  if (end <= start) end += 1440;
+  const result: number[] = [];
+  for (let minute = Math.floor(start / 30) * 30; minute < end; minute += 30) result.push(minute);
+  return result;
+}
 
 function toEnglishDigits(value: string): string {
   const ar = '٠١٢٣٤٥٦٧٨٩', fa = '۰۱۲۳۴۵۶۷۸۹';
@@ -43,19 +66,12 @@ function normalizeIraqiPhone(raw: string): string {
   throw new Error('أدخل رقم موبايل عراقي صحيح مثل 07701234567.');
 }
 
-function minutesForSlot(slot: Slot): number[] {
-  const toMinutes = (time: string) => { const [h, m] = time.split(':').map(Number); return h * 60 + m; };
-  const start = toMinutes(slot.startTime);
-  let end = toMinutes(slot.endTime);
-  if (end <= start) end += 1440;
-  const result: number[] = [];
-  for (let minute = Math.floor(start / 30) * 30; minute < end; minute += 30) result.push(minute);
-  return result;
-}
 
 export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClose, currentUser, onLoginSuccess, onSubmitBooking }) => {
   const [bookingDate, setBookingDate] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().split('T')[0]; });
-  const [timeSlot, setTimeSlot] = useState(SLOTS[1].label);
+  const [selectedPeriod, setSelectedPeriod] = useState<PeriodKey>('evening');
+  const [startTime, setStartTime] = useState('18:00');
+  const [endTime, setEndTime] = useState('23:00');
   const [guestsCount, setGuestsCount] = useState(100);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -87,10 +103,20 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
 
   useEffect(() => () => { recaptchaRef.current?.clear(); recaptchaRef.current = null; }, []);
 
-  const selectedSlot = useMemo(() => SLOTS.find((s) => s.label === timeSlot) || SLOTS[1], [timeSlot]);
+  const selectedPeriodConfig = useMemo(() => PERIODS.find((p) => p.key === selectedPeriod) || PERIODS[1], [selectedPeriod]);
   const busySet = useMemo(() => new Set(busyMinutes), [busyMinutes]);
-  const isSlotBooked = (slot: Slot) => minutesForSlot(slot).some((minute) => busySet.has(minute));
-  const selectedBooked = isSlotBooked(selectedSlot);
+  const selectedMinutes = useMemo(() => minutesForRange(startTime, endTime), [startTime, endTime]);
+  const selectedBooked = selectedMinutes.some((minute) => busySet.has(minute));
+  const timeSlot = `${selectedPeriodConfig.label} (${hourLabel(Number(startTime.slice(0, 2)))} - ${hourLabel(Number(endTime.slice(0, 2)) || 24)})`;
+  const startOptions = Array.from({ length: selectedPeriodConfig.end - selectedPeriodConfig.start }, (_, i) => selectedPeriodConfig.start + i);
+  const selectedStartHour = Number(startTime.slice(0, 2)) + (selectedPeriod === 'night' && Number(startTime.slice(0, 2)) < 6 ? 24 : 0);
+  const endOptions = Array.from({ length: selectedPeriodConfig.end - selectedStartHour }, (_, i) => selectedStartHour + i + 1);
+
+  const choosePeriod = (period: Period) => {
+    setSelectedPeriod(period.key);
+    setStartTime(hourToTime(period.start));
+    setEndTime(hourToTime(period.end));
+  };
 
   if (!isOpen || !item) return null;
   const isHall = item.type === 'hall';
@@ -109,7 +135,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
     await onSubmitBooking({
       itemType: item.type, itemId: item.data.id, itemName: item.data.name, itemLocation: item.data.location,
       itemImage: isHall ? (hall!.coverImage || hall!.images[0] || '') : (provider!.coverImage || ''),
-      date: bookingDate, timeSlot, startTime: selectedSlot.startTime, endTime: selectedSlot.endTime,
+      date: bookingDate, timeSlot, startTime, endTime,
       guests: isHall ? effectiveGuests : undefined, totalPrice, depositAmount, notes: notes.trim(),
       customerName: user.name || customerName.trim(), customerPhone: user.phone || customerPhone,
       customerId: user.id, ownerId: targetOwnerId, requesterAccountType: user.accountType,
@@ -136,7 +162,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
     try {
       if (currentUser.isGuest) await sendGuestOtp();
       else { await submitBooking(currentUser); onClose(); }
-    } catch (err) { console.error('Booking failed:', err); setErrorMsg(err instanceof Error ? err.message : 'تعذر تنفيذ الحجز.'); }
+    } catch (err: any) { console.error('Booking failed:', err); const code = err?.code || ''; const msg = code === 'auth/operation-not-allowed' ? 'تسجيل الدخول برقم الهاتف غير مفعّل في Firebase. فعّل Phone provider من Firebase Authentication.' : code === 'auth/invalid-app-credential' || code === 'auth/captcha-check-failed' ? 'فشل تحقق reCAPTCHA. تأكد أن localhost مضاف إلى Authorized domains في Firebase Authentication.' : code === 'auth/too-many-requests' ? 'تم إرسال محاولات كثيرة. انتظر قليلاً ثم حاول مجدداً.' : code === 'auth/invalid-phone-number' ? 'رقم الهاتف غير صحيح. اكتب 11 رقماً عراقياً يبدأ بـ 07.' : (err instanceof Error ? err.message : 'تعذر تنفيذ الحجز.'); setErrorMsg(msg); }
     finally { setIsLoading(false); }
   };
 
@@ -173,9 +199,36 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
         {guestStep === 'details' ? <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 flex justify-between text-xs"><div>العربون <b className="block text-amber-900">{depositAmount.toLocaleString()} د.ع</b></div><div>السعر <b className="block text-emerald-800">{totalPrice.toLocaleString()} د.ع</b></div></div>
           <div><label className="text-xs font-bold flex gap-1 mb-1"><Calendar className="w-4 h-4"/>التاريخ</label><input type="date" value={bookingDate} onChange={(e)=>setBookingDate(e.target.value)} min={new Date().toISOString().split('T')[0]} className="w-full px-3 py-2 border rounded-xl text-xs"/></div>
-          <div><label className="text-xs font-bold flex gap-1 mb-1"><Clock className="w-4 h-4"/>الفترة {availabilityLoading && <span className="text-gray-400">(جاري الفحص...)</span>}</label><div className="grid sm:grid-cols-3 gap-2">{SLOTS.map((slot)=>{const booked=isSlotBooked(slot);return <button key={slot.label} type="button" disabled={booked||availabilityLoading} onClick={()=>setTimeSlot(slot.label)} className={`p-2 rounded-xl border text-[11px] font-bold ${booked?'bg-rose-50 text-rose-700':timeSlot===slot.label?'bg-emerald-700 text-white':'bg-gray-50'}`}>{slot.label}<span className="block text-[9px]">{booked?'محجوز':'متاح'}</span></button>})}</div></div>
-          {isHall && hall && <div><div className="flex justify-between text-xs font-bold"><span><Users className="inline w-4 h-4"/> عدد الضيوف</span><span>{effectiveGuests}</span></div><input type="range" min={1} max={hall.capacity} step={10} value={effectiveGuests} onChange={(e)=>setGuestsCount(Number(e.target.value))} className="w-full accent-emerald-700"/></div>}
-          <div className="grid sm:grid-cols-2 gap-3"><div><label className="text-xs font-bold"><User className="inline w-4 h-4"/> الاسم</label><input value={customerName} onChange={(e)=>setCustomerName(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs" required/></div><div><label className="text-xs font-bold"><Phone className="inline w-4 h-4"/> الهاتف</label><input value={customerPhone} onChange={(e)=>setCustomerPhone(e.target.value)} placeholder="07701234567" className="w-full px-3 py-2 border rounded-xl text-xs dir-ltr" required/></div></div>
+          <div>
+  <label className="text-xs font-bold flex gap-1 mb-2"><Clock className="w-4 h-4"/>الفترة {availabilityLoading && <span className="text-gray-400">(جاري الفحص...)</span>}</label>
+  <div className="grid grid-cols-3 gap-2 mb-3">
+    {PERIODS.map((period) => (
+      <button key={period.key} type="button" disabled={availabilityLoading} onClick={() => choosePeriod(period)} className={`p-2.5 rounded-xl border text-xs font-bold ${selectedPeriod === period.key ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-gray-50 text-gray-800'}`}>
+        {period.label}
+        <span className="block text-[9px] mt-0.5 opacity-80">{hourLabel(period.start)} - {hourLabel(period.end)}</span>
+      </button>
+    ))}
+  </div>
+  <div className="grid grid-cols-2 gap-3">
+    <div>
+      <label className="text-[11px] font-bold text-gray-600 block mb-1">من الساعة</label>
+      <select value={startTime} onChange={(e) => { const next = e.target.value; setStartTime(next); const h = Number(next.slice(0,2)) + (selectedPeriod === 'night' && Number(next.slice(0,2)) < 6 ? 24 : 0); if (endOptions.length === 0 || minutesForRange(next, endTime).length === 0) setEndTime(hourToTime(h + 1)); }} className="w-full px-3 py-2.5 border rounded-xl text-xs bg-white">
+        {startOptions.map((h) => <option key={h} value={hourToTime(h)}>{hourLabel(h)}</option>)}
+      </select>
+    </div>
+    <div>
+      <label className="text-[11px] font-bold text-gray-600 block mb-1">إلى الساعة</label>
+      <select value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full px-3 py-2.5 border rounded-xl text-xs bg-white">
+        {endOptions.map((h) => <option key={h} value={hourToTime(h)}>{hourLabel(h)}</option>)}
+      </select>
+    </div>
+  </div>
+  <div className={`mt-2 p-2 rounded-xl text-[10px] font-bold ${selectedBooked ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+    {selectedBooked ? 'الوقت المختار يتداخل مع حجز مؤكد. اختر وقتاً آخر.' : 'الوقت المختار متاح حالياً.'}
+  </div>
+</div>
+{isHall && hall && <div><div className="flex justify-between text-xs font-bold"><span><Users className="inline w-4 h-4"/> عدد الضيوف</span><span>{effectiveGuests}</span></div><input type="range" min={1} max={hall.capacity} step={10} value={effectiveGuests} onChange={(e)=>setGuestsCount(Number(e.target.value))} className="w-full accent-emerald-700"/></div>}
+          <div className="grid sm:grid-cols-2 gap-3"><div><label className="text-xs font-bold"><User className="inline w-4 h-4"/> الاسم</label><input value={customerName} onChange={(e)=>setCustomerName(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs" required/></div><div><label className="text-xs font-bold"><Phone className="inline w-4 h-4"/> الهاتف</label><input type="tel" inputMode="numeric" maxLength={11} value={customerPhone} onChange={(e)=>setCustomerPhone(toEnglishDigits(e.target.value).replace(/\D/g, '').slice(0, 11))} placeholder="07701234567" className="w-full px-3 py-2 border rounded-xl text-xs dir-ltr" required/></div></div>
           <div><label className="text-xs font-bold"><FileText className="inline w-4 h-4"/> ملاحظات</label><textarea value={notes} onChange={(e)=>setNotes(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs h-16"/></div>
           <div className="p-2.5 bg-gray-50 border rounded-xl text-[11px] text-gray-600 flex gap-2"><ShieldCheck className="w-4 h-4 text-emerald-600"/>{currentUser.isGuest?'سنرسل OTP حقيقي ونربط الحجز بهويتك.':'الحجز خاص بك وبالطرف المستلم فقط.'}</div>
           <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className="px-4 py-2 text-xs">إلغاء</button><button disabled={isLoading||isSelfBooking||selectedBooked||availabilityLoading} className="px-5 py-2 bg-emerald-700 disabled:bg-gray-400 text-white rounded-xl text-xs font-bold flex gap-1"><CheckCircle className="w-4 h-4"/>{isLoading?'جاري التنفيذ...':currentUser.isGuest?'إرسال OTP':'إرسال الحجز'}</button></div>
