@@ -1,7 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import {
   getAuth,
-  signOut,
   onAuthStateChanged,
   User as FirebaseUser,
 } from 'firebase/auth';
@@ -21,18 +20,24 @@ import {
 } from 'firebase/firestore';
 
 import firebaseConfig from '../../firebase-applet-config.json';
-import { UserProfile, Booking, Hall, ServiceProvider, FeedPost, Complaint, AccountType, BookingStatus } from '../types';
-import { INITIAL_HALLS } from '../data/halls';
-import { INITIAL_SERVICE_PROVIDERS } from '../data/serviceProviders';
-import { INITIAL_POSTS } from '../data/posts';
+import {
+  UserProfile,
+  Booking,
+  Hall,
+  ServiceProvider,
+  FeedPost,
+  Complaint,
+  AccountType,
+  BookingStatus,
+} from '../types';
 
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-
-// Use initializeFirestore with long polling auto-detection to ensure smooth connectivity in browser sandbox environments
-export const db = initializeFirestore(app, {
-  experimentalAutoDetectLongPolling: true,
-}, firebaseConfig.firestoreDatabaseId || '(default)');
+export const db = initializeFirestore(
+  app,
+  { experimentalAutoDetectLongPolling: true },
+  firebaseConfig.firestoreDatabaseId || '(default)'
+);
 
 export enum OperationType {
   CREATE = 'create',
@@ -55,7 +60,7 @@ export interface FirestoreErrorInfo {
   };
 }
 
-export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
@@ -67,41 +72,40 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path,
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  console.error('Firestore Error:', errInfo);
+  throw error instanceof Error ? error : new Error(String(error));
 }
 
-// Time helpers for slot overlap calculation
 export function parseTimeToMinutes(timeStr: string): number {
-  if (!timeStr) return 0;
-  const parts = timeStr.split(':').map((p) => parseInt(p, 10));
-  const h = isNaN(parts[0]) ? 0 : parts[0];
-  const m = parts.length > 1 && !isNaN(parts[1]) ? parts[1] : 0;
+  if (!/^\d{1,2}:\d{2}$/.test(timeStr || '')) {
+    throw new Error('صيغة الوقت غير صحيحة.');
+  }
+  const [h, m] = timeStr.split(':').map(Number);
+  if (h < 0 || h > 23 || m < 0 || m > 59) throw new Error('قيمة الوقت غير صحيحة.');
   return h * 60 + m;
 }
 
 export function getSlotTimeRange(timeSlot: string, startTimeStr?: string, endTimeStr?: string) {
-  let start = startTimeStr || '18:00';
-  let end = endTimeStr || '23:00';
+  let start = startTimeStr;
+  let end = endTimeStr;
 
-  if (!startTimeStr || !endTimeStr) {
+  if (!start || !end) {
     if (timeSlot.includes('صباحي')) {
       start = '10:00';
       end = '14:00';
-    } else if (timeSlot.includes('مسائي')) {
-      start = '18:00';
-      end = '23:00';
     } else if (timeSlot.includes('ليلي')) {
       start = '23:00';
       end = '02:00';
+    } else {
+      start = '18:00';
+      end = '23:00';
     }
   }
 
-  let startMins = parseTimeToMinutes(start);
+  const startMins = parseTimeToMinutes(start);
   let endMins = parseTimeToMinutes(end);
-  if (endMins <= startMins) {
-    endMins += 24 * 60; // Midnight crossing
-  }
+  if (endMins <= startMins) endMins += 24 * 60;
+  if (endMins - startMins > 24 * 60) throw new Error('مدة الحجز غير صحيحة.');
 
   return { start, end, startMins, endMins };
 }
@@ -113,10 +117,17 @@ export function checkTimeOverlap(
   return range1.startMins < range2.endMins && range1.endMins > range2.startMins;
 }
 
-// Safe Auth check (no anonymous sign in to avoid admin-restricted-operation errors)
+function bookingLockKeys(itemId: string, date: string, startMins: number, endMins: number): string[] {
+  const keys: string[] = [];
+  // 30-minute lock granularity. All current booking inputs are aligned to clock slots.
+  for (let minute = Math.floor(startMins / 30) * 30; minute < endMins; minute += 30) {
+    keys.push(`${itemId}_${date}_${minute}`.replace(/[^a-zA-Z0-9_-]/g, '_'));
+  }
+  return keys;
+}
+
 export async function ensureFirebaseAuth(): Promise<FirebaseUser | null> {
   if (auth.currentUser) return auth.currentUser;
-
   return new Promise((resolve) => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       unsubscribe();
@@ -125,16 +136,19 @@ export async function ensureFirebaseAuth(): Promise<FirebaseUser | null> {
   });
 }
 
-// User Profile Service
+async function requireFirebaseUser(): Promise<FirebaseUser> {
+  const user = await ensureFirebaseAuth();
+  if (!user) throw new Error('يجب تسجيل الدخول أو التحقق من رقم الهاتف أولاً.');
+  return user;
+}
+
 export async function fetchUserFromFirestore(uid: string): Promise<UserProfile | null> {
-  const path = `users/${uid}`;
+  if (!uid) return null;
+  const firebaseUser = await ensureFirebaseAuth();
+  if (!firebaseUser || firebaseUser.uid !== uid) return null;
   try {
-    const userDocRef = doc(db, 'users', uid);
-    const snap = await getDoc(userDocRef);
-    if (snap.exists()) {
-      return snap.data() as UserProfile;
-    }
-    return null;
+    const snap = await getDoc(doc(db, 'users', uid));
+    return snap.exists() ? (snap.data() as UserProfile) : null;
   } catch (err) {
     console.error('Error fetching user from Firestore:', err);
     return null;
@@ -142,92 +156,70 @@ export async function fetchUserFromFirestore(uid: string): Promise<UserProfile |
 }
 
 export async function findUserByPhoneFromFirestore(phone: string): Promise<UserProfile | null> {
-  const path = 'users';
-  try {
-    const cleanPhone = phone.trim().replace(/\s+/g, '');
-    const q = query(collection(db, 'users'), where('phone', '==', cleanPhone));
-    const snap = await getDocs(q);
-    if (!snap.empty) {
-      return snap.docs[0].data() as UserProfile;
-    }
-    return null;
-  } catch (err) {
-    console.error('Error finding user by phone in Firestore:', err);
-    return null;
-  }
+  // User documents are private. After phone-auth, only inspect the authenticated user's own document.
+  const firebaseUser = await ensureFirebaseAuth();
+  if (!firebaseUser) return null;
+  const profile = await fetchUserFromFirestore(firebaseUser.uid);
+  if (!profile) return null;
+  const normalize = (value: string) => value.trim().replace(/\s+/g, '');
+  return normalize(profile.phone) === normalize(phone) ? profile : null;
 }
 
 export async function saveUserToFirestore(user: UserProfile): Promise<UserProfile> {
-  const firebaseUser = await ensureFirebaseAuth();
-  const targetUid = user.id || firebaseUser?.uid || `user-${Date.now()}`;
+  const firebaseUser = await requireFirebaseUser();
+  if (user.id && user.id !== firebaseUser.uid) {
+    throw new Error('لا يمكن حفظ بيانات مستخدم آخر.');
+  }
+
+  const userRef = doc(db, 'users', firebaseUser.uid);
+  const existing = await getDoc(userRef);
+  const now = new Date().toISOString();
+
+  if (existing.exists()) {
+    const previous = existing.data() as UserProfile;
+    if (previous.accountType !== user.accountType) {
+      throw new Error('لا يمكن تغيير نوع الحساب بعد إنشائه من الواجهة.');
+    }
+  }
 
   const userDoc: UserProfile = {
     ...user,
-    id: targetUid,
+    id: firebaseUser.uid,
+    updatedAt: now,
+    createdAt: user.createdAt || (existing.exists() ? (existing.data() as UserProfile).createdAt : now),
   };
 
-  const userRef = doc(db, 'users', targetUid);
   try {
-    await setDoc(
-      userRef,
-      {
-        ...userDoc,
-        updatedAt: new Date().toISOString(),
-        createdAt: user.createdAt || new Date().toISOString(),
-      },
-      { merge: true }
-    );
+    await setDoc(userRef, userDoc, { merge: true });
+    return userDoc;
   } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, `users/${targetUid}`);
+    return handleFirestoreError(err, OperationType.WRITE, `users/${firebaseUser.uid}`);
   }
-
-  return userDoc;
 }
 
-// Bookings Service
-export function subscribeBookings(
-  uid: string,
-  accountType: AccountType,
-  callback: (bookings: Booking[]) => void
-) {
+export function subscribeBookings(uid: string, accountType: AccountType, callback: (bookings: Booking[]) => void) {
   if (!uid) {
     callback([]);
     return () => {};
   }
 
   const bookingsRef = collection(db, 'bookings');
-  let q;
-
-  if (accountType === 'مدير Admin' || accountType === 'مدير') {
-    q = query(bookingsRef);
-  } else if (accountType === 'صاحب قاعة' || accountType === 'مزود خدمة') {
-    q = query(bookingsRef, where('targetOwnerId', '==', uid));
-  } else {
-    q = query(bookingsRef, where('requesterId', '==', uid));
-  }
+  const q = accountType === 'مدير Admin' || accountType === 'مدير'
+    ? query(bookingsRef)
+    : accountType === 'صاحب قاعة' || accountType === 'مزود خدمة'
+      ? query(bookingsRef, where('targetOwnerId', '==', uid))
+      : query(bookingsRef, where('requesterId', '==', uid));
 
   return onSnapshot(
     q,
     (snap) => {
-      const list: Booking[] = snap.docs.map((d) => d.data() as Booking);
+      const list = snap.docs.map((d) => ({ ...d.data(), id: d.id } as Booking));
       list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
       callback(list);
     },
     (error) => {
       console.error('Bookings listener error:', error);
-      if (accountType === 'صاحب قاعة' || accountType === 'مزود خدمة') {
-        const fallbackQ = query(bookingsRef, where('ownerId', '==', uid));
-        onSnapshot(fallbackQ, (fSnap) => {
-          const list: Booking[] = fSnap.docs.map((d) => d.data() as Booking);
-          callback(list);
-        });
-      } else if (accountType === 'زبون') {
-        const fallbackQ = query(bookingsRef, where('customerId', '==', uid));
-        onSnapshot(fallbackQ, (fSnap) => {
-          const list: Booking[] = fSnap.docs.map((d) => d.data() as Booking);
-          callback(list);
-        });
-      }
+      callback([]);
     }
   );
 }
@@ -251,49 +243,37 @@ export async function createBookingInFirestore(bookingData: {
   startTime?: string;
   endTime?: string;
 }): Promise<Booking> {
-  const firebaseUser = await ensureFirebaseAuth();
-  const currentUid = bookingData.customerId || firebaseUser?.uid || `guest-${Date.now()}`;
-
-  const targetOwnerId = bookingData.ownerId || 'owner-1';
-
-  if (currentUid === targetOwnerId) {
-    throw new Error('لا يمكنك حجز قاعتك أو حسابك الخاص كصاحب قاعة/مزود خدمة.');
+  const firebaseUser = await requireFirebaseUser();
+  if (bookingData.customerId && bookingData.customerId !== firebaseUser.uid) {
+    throw new Error('هوية صاحب الحجز غير متطابقة مع الحساب المسجل.');
   }
+  if (!bookingData.ownerId) throw new Error('تعذر تحديد مالك القاعة أو مزود الخدمة.');
+  if (firebaseUser.uid === bookingData.ownerId) throw new Error('لا يمكنك حجز حسابك أو خدمتك الخاصة.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(bookingData.date)) throw new Error('تاريخ الحجز غير صحيح.');
 
   const range = getSlotTimeRange(bookingData.timeSlot, bookingData.startTime, bookingData.endTime);
-
   const bookingsRef = collection(db, 'bookings');
-  let existingSnap;
+
   try {
-    existingSnap = await getDocs(
-      query(
-        bookingsRef,
-        where('itemId', '==', bookingData.itemId),
-        where('date', '==', bookingData.date)
-      )
+    const existingSnap = await getDocs(
+      query(bookingsRef, where('itemId', '==', bookingData.itemId), where('date', '==', bookingData.date))
     );
+    const acceptedOverlap = existingSnap.docs
+      .map((d) => d.data() as Booking)
+      .filter((b) => b.status === 'مقبول' || b.status === 'accepted')
+      .some((b) => checkTimeOverlap(range, getSlotTimeRange(b.timeSlot, b.startTime, b.endTime)));
+    if (acceptedOverlap) throw new Error('هذا الموعد محجوز. يرجى اختيار وقت آخر.');
   } catch (err) {
+    if (err instanceof Error && err.message.includes('محجوز')) throw err;
     handleFirestoreError(err, OperationType.GET, 'bookings');
   }
 
-  const acceptedOverlaps = existingSnap!.docs
-    .map((d) => d.data() as Booking)
-    .filter((b) => b.status === 'مقبول' || b.status === 'accepted')
-    .some((b) => {
-      const bRange = getSlotTimeRange(b.timeSlot, (b as any).startTime, (b as any).endTime);
-      return checkTimeOverlap(range, bRange);
-    });
-
-  if (acceptedOverlaps) {
-    throw new Error('عذراً، هذا الموعد محجوز بالكامل ومأكود لهذا اليوم. يرجى اختيار تاريخ أو فترة زمنية أخرى.');
-  }
-
-  const newDocRef = doc(collection(db, 'bookings'));
-  const bookingId = `WED-${Date.now().toString().slice(-4)}`;
-
+  const newDocRef = doc(bookingsRef);
+  const now = new Date().toISOString();
+  const humanBookingId = `WED-${Date.now().toString().slice(-8)}`;
   const newBooking: Booking = {
-    id: bookingId,
-    bookingId: bookingId,
+    id: newDocRef.id,
+    bookingId: humanBookingId,
     itemType: bookingData.itemType,
     itemId: bookingData.itemId,
     itemName: bookingData.itemName,
@@ -301,85 +281,83 @@ export async function createBookingInFirestore(bookingData: {
     itemImage: bookingData.itemImage,
     date: bookingData.date,
     timeSlot: bookingData.timeSlot,
+    startTime: range.start,
+    endTime: range.end,
     guests: bookingData.guests,
     totalPrice: bookingData.totalPrice,
     depositAmount: bookingData.depositAmount,
     notes: bookingData.notes,
     status: 'قيد المراجعة',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
     customerName: bookingData.customerName,
     customerPhone: bookingData.customerPhone,
-    customerId: currentUid,
-    requesterId: currentUid,
+    customerId: firebaseUser.uid,
+    requesterId: firebaseUser.uid,
     requesterName: bookingData.customerName,
     requesterPhone: bookingData.customerPhone,
     requesterAccountType: 'زبون',
-    ownerId: targetOwnerId,
-    targetOwnerId: targetOwnerId,
+    ownerId: bookingData.ownerId,
+    targetOwnerId: bookingData.ownerId,
     targetType: bookingData.itemType,
     hallId: bookingData.itemType === 'hall' ? bookingData.itemId : null,
     serviceProviderId: bookingData.itemType === 'provider' ? bookingData.itemId : null,
-    startTime: range.start,
-    endTime: range.end,
-  } as any;
+  };
 
   try {
-    await setDoc(doc(db, 'bookings', newDocRef.id), newBooking);
+    await setDoc(newDocRef, newBooking);
+    return newBooking;
   } catch (err) {
-    handleFirestoreError(err, OperationType.CREATE, `bookings/${newDocRef.id}`);
+    return handleFirestoreError(err, OperationType.CREATE, `bookings/${newDocRef.id}`);
   }
-
-  return newBooking;
 }
 
-// Transaction for Accepting Booking safely with Overlap Check
 export async function acceptBookingInFirestore(bookingDocId: string): Promise<void> {
+  const firebaseUser = await requireFirebaseUser();
+  const bookingRef = doc(db, 'bookings', bookingDocId);
+
   try {
+    // First read existing accepted bookings to cover legacy bookings created before lock documents existed.
+    const initialSnap = await getDoc(bookingRef);
+    if (!initialSnap.exists()) throw new Error('الحجز غير موجود.');
+    const initial = initialSnap.data() as Booking;
+    if (initial.targetOwnerId !== firebaseUser.uid) throw new Error('ليس لديك صلاحية قبول هذا الحجز.');
+
+    const range = getSlotTimeRange(initial.timeSlot, initial.startTime, initial.endTime);
+    const existing = await getDocs(query(collection(db, 'bookings'), where('itemId', '==', initial.itemId), where('date', '==', initial.date)));
+    const legacyOverlap = existing.docs
+      .filter((d) => d.id !== bookingDocId)
+      .map((d) => d.data() as Booking)
+      .filter((b) => b.status === 'مقبول' || b.status === 'accepted')
+      .some((b) => checkTimeOverlap(range, getSlotTimeRange(b.timeSlot, b.startTime, b.endTime)));
+    if (legacyOverlap) throw new Error('تعذر القبول: يوجد حجز مؤكد متعارض في نفس الفترة.');
+
+    const lockKeys = bookingLockKeys(initial.itemId, initial.date, range.startMins, range.endMins);
     await runTransaction(db, async (transaction) => {
-      const bookingRef = doc(db, 'bookings', bookingDocId);
-      const bookingSnap = await transaction.get(bookingRef);
+      const freshSnap = await transaction.get(bookingRef);
+      if (!freshSnap.exists()) throw new Error('الحجز غير موجود.');
+      const booking = freshSnap.data() as Booking;
+      if (booking.targetOwnerId !== firebaseUser.uid) throw new Error('ليس لديك صلاحية قبول هذا الحجز.');
+      if (booking.status !== 'قيد المراجعة' && booking.status !== 'pending') throw new Error('تم تغيير حالة هذا الحجز سابقاً.');
 
-      if (!bookingSnap.exists()) {
-        throw new Error('الحجز غير موجود.');
+      const lockRefs = lockKeys.map((key) => doc(db, 'bookingLocks', key));
+      for (const lockRef of lockRefs) {
+        const lockSnap = await transaction.get(lockRef);
+        if (lockSnap.exists()) throw new Error('تعذر القبول: الموعد أصبح محجوزاً بواسطة طلب آخر.');
       }
 
-      const booking = bookingSnap.data() as Booking & {
-        startTime?: string;
-        endTime?: string;
-        targetOwnerId?: string;
-        requesterId?: string;
-      };
-
-      if (booking.status !== 'قيد المراجعة' && booking.status !== 'pending') {
-        throw new Error('تم تغيير حالة هذا الحجز سابقاً.');
-      }
-
-      const date = booking.date;
-      const itemId = booking.itemId;
-      const range = getSlotTimeRange(booking.timeSlot, booking.startTime, booking.endTime);
-
-      const qSnap = await getDocs(
-        query(collection(db, 'bookings'), where('itemId', '==', itemId), where('date', '==', date))
-      );
-
-      const hasOverlap = qSnap.docs
-        .filter((d) => d.id !== bookingDocId)
-        .map((d) => d.data() as Booking & { startTime?: string; endTime?: string })
-        .filter((b) => b.status === 'مقبول' || b.status === 'accepted')
-        .some((b) => {
-          const bRange = getSlotTimeRange(b.timeSlot, b.startTime, b.endTime);
-          return checkTimeOverlap(range, bRange);
+      for (const lockRef of lockRefs) {
+        transaction.set(lockRef, {
+          bookingId: bookingDocId,
+          itemId: booking.itemId,
+          date: booking.date,
+          requesterId: booking.requesterId,
+          targetOwnerId: booking.targetOwnerId,
+          createdAt: new Date().toISOString(),
         });
-
-      if (hasOverlap) {
-        throw new Error('تعذر القبول: يوجد حجز آخر مؤكد متعارض في نفس الفترة الزمنية.');
       }
 
-      transaction.update(bookingRef, {
-        status: 'مقبول',
-        updatedAt: new Date().toISOString(),
-      });
+      transaction.update(bookingRef, { status: 'مقبول', updatedAt: new Date().toISOString() });
     });
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `bookings/${bookingDocId}`);
@@ -387,223 +365,193 @@ export async function acceptBookingInFirestore(bookingDocId: string): Promise<vo
 }
 
 export async function updateBookingStatusInFirestore(bookingDocId: string, newStatus: BookingStatus): Promise<void> {
-  if (newStatus === 'مقبول') {
+  if (newStatus === 'مقبول' || newStatus === 'accepted') {
     await acceptBookingInFirestore(bookingDocId);
     return;
   }
+  if (newStatus === 'ملغي' || newStatus === 'cancelled') {
+    await cancelBookingInFirestore(bookingDocId);
+    return;
+  }
 
-  const bookingRef = doc(db, 'bookings', bookingDocId);
+  await requireFirebaseUser();
   try {
-    await updateDoc(bookingRef, {
-      status: newStatus,
-      updatedAt: new Date().toISOString(),
-    });
+    await updateDoc(doc(db, 'bookings', bookingDocId), { status: newStatus, updatedAt: new Date().toISOString() });
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `bookings/${bookingDocId}`);
   }
 }
 
 export async function cancelBookingInFirestore(bookingDocId: string): Promise<void> {
+  const firebaseUser = await requireFirebaseUser();
   const bookingRef = doc(db, 'bookings', bookingDocId);
   try {
-    await updateDoc(bookingRef, {
-      status: 'ملغي',
-      updatedAt: new Date().toISOString(),
+    const snap = await getDoc(bookingRef);
+    if (!snap.exists()) throw new Error('الحجز غير موجود.');
+    const booking = snap.data() as Booking;
+    if (booking.requesterId !== firebaseUser.uid && booking.targetOwnerId !== firebaseUser.uid) {
+      throw new Error('ليس لديك صلاحية إلغاء هذا الحجز.');
+    }
+
+    const range = getSlotTimeRange(booking.timeSlot, booking.startTime, booking.endTime);
+    const lockKeys = bookingLockKeys(booking.itemId, booking.date, range.startMins, range.endMins);
+
+    await runTransaction(db, async (transaction) => {
+      const fresh = await transaction.get(bookingRef);
+      if (!fresh.exists()) throw new Error('الحجز غير موجود.');
+      const current = fresh.data() as Booking;
+      if (current.requesterId !== firebaseUser.uid && current.targetOwnerId !== firebaseUser.uid) {
+        throw new Error('ليس لديك صلاحية إلغاء هذا الحجز.');
+      }
+      for (const key of lockKeys) {
+        const lockRef = doc(db, 'bookingLocks', key);
+        const lockSnap = await transaction.get(lockRef);
+        if (lockSnap.exists() && lockSnap.data().bookingId === bookingDocId) transaction.delete(lockRef);
+      }
+      transaction.update(bookingRef, { status: 'ملغي', updatedAt: new Date().toISOString() });
     });
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `bookings/${bookingDocId}`);
   }
 }
 
-// Favorites Real-Time Listener & Actions
 export function subscribeUserFavorites(uid: string, callback: (favIds: string[]) => void) {
   if (!uid) {
     callback([]);
     return () => {};
   }
-
-  const favsRef = collection(db, 'users', uid, 'favorites');
-  return onSnapshot(favsRef, (snap) => {
-    const ids = snap.docs.map((d) => d.id);
-    callback(ids);
-  }, (err) => {
-    handleFirestoreError(err, OperationType.GET, `users/${uid}/favorites`);
-  });
+  return onSnapshot(
+    collection(db, 'users', uid, 'favorites'),
+    (snap) => callback(snap.docs.map((d) => d.id)),
+    (err) => {
+      console.error('Favorites listener error:', err);
+      callback([]);
+    }
+  );
 }
 
 export async function toggleUserFavoriteInFirestore(uid: string, itemId: string, itemType: string) {
-  if (!uid) return;
+  const firebaseUser = await requireFirebaseUser();
+  if (uid !== firebaseUser.uid) throw new Error('لا يمكنك تعديل مفضلة حساب آخر.');
   const favDocRef = doc(db, 'users', uid, 'favorites', itemId);
   try {
     const snap = await getDoc(favDocRef);
-    if (snap.exists()) {
-      await deleteDoc(favDocRef);
-    } else {
-      await setDoc(favDocRef, {
-        itemId,
-        itemType,
-        createdAt: new Date().toISOString(),
-      });
-    }
+    if (snap.exists()) await deleteDoc(favDocRef);
+    else await setDoc(favDocRef, { itemId, itemType, createdAt: new Date().toISOString() });
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, `users/${uid}/favorites/${itemId}`);
   }
 }
 
-// Complaints Real-Time Service
 export function subscribeComplaints(uid: string, accountType: AccountType, callback: (list: Complaint[]) => void) {
   if (!uid) {
     callback([]);
     return () => {};
   }
-
   const ref = collection(db, 'complaints');
-  let q;
-  if (accountType === 'مدير Admin' || accountType === 'مدير') {
-    q = query(ref);
-  } else {
-    q = query(ref, where('userId', '==', uid));
-  }
-
-  return onSnapshot(q, (snap) => {
-    const list = snap.docs.map((d) => d.data() as Complaint);
-    callback(list);
-  }, (err) => {
-    handleFirestoreError(err, OperationType.GET, 'complaints');
-  });
+  const q = accountType === 'مدير Admin' || accountType === 'مدير'
+    ? query(ref)
+    : query(ref, where('userId', '==', uid));
+  return onSnapshot(
+    q,
+    (snap) => callback(snap.docs.map((d) => ({ ...d.data(), id: d.id } as Complaint))),
+    (err) => {
+      console.error('Complaints listener error:', err);
+      callback([]);
+    }
+  );
 }
 
 export async function createComplaintInFirestore(complaint: Omit<Complaint, 'id' | 'createdAt' | 'status'>): Promise<Complaint> {
-  const firebaseUser = await ensureFirebaseAuth();
+  const firebaseUser = await requireFirebaseUser();
+  if (complaint.userId && complaint.userId !== firebaseUser.uid) throw new Error('هوية الشكوى غير صحيحة.');
   const docRef = doc(collection(db, 'complaints'));
-  const id = `CMP-${Date.now().toString().slice(-4)}`;
-  const userId = complaint.userId || firebaseUser?.uid || `user-${Date.now()}`;
-
   const newComplaint: Complaint = {
     ...complaint,
-    id,
-    userId,
+    id: docRef.id,
+    userId: firebaseUser.uid,
     status: 'قيد المراجعة',
     createdAt: new Date().toISOString(),
   };
-
   try {
     await setDoc(docRef, newComplaint);
+    return newComplaint;
   } catch (err) {
-    handleFirestoreError(err, OperationType.CREATE, `complaints/${docRef.id}`);
+    return handleFirestoreError(err, OperationType.CREATE, `complaints/${docRef.id}`);
   }
-
-  return newComplaint;
 }
 
 export async function updateComplaintStatusInFirestore(complaintId: string, status: Complaint['status'], adminReply?: string) {
-  const q = query(collection(db, 'complaints'), where('id', '==', complaintId));
+  await requireFirebaseUser();
   try {
-    const snap = await getDocs(q);
-    if (!snap.empty) {
-      const docRef = snap.docs[0].ref;
-      await updateDoc(docRef, {
-        status,
-        ...(adminReply ? { adminReply } : {}),
-        updatedAt: new Date().toISOString(),
-      });
-    }
+    await updateDoc(doc(db, 'complaints', complaintId), {
+      status,
+      ...(adminReply ? { adminReply } : {}),
+      updatedAt: new Date().toISOString(),
+    });
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `complaints/${complaintId}`);
   }
 }
 
-// Data Seed Function to populate initial Halls, Providers, Posts into Firestore if empty
-export async function seedInitialDataIfEmpty() {
-  try {
-    // Halls
-    const hallsSnap = await getDocs(collection(db, 'halls'));
-    if (hallsSnap.empty) {
-      for (const hall of INITIAL_HALLS) {
-        await setDoc(doc(db, 'halls', hall.id), hall);
-      }
-    }
-
-    // Providers
-    const providersSnap = await getDocs(collection(db, 'serviceProviders'));
-    if (providersSnap.empty) {
-      for (const provider of INITIAL_SERVICE_PROVIDERS) {
-        await setDoc(doc(db, 'serviceProviders', provider.id), provider);
-      }
-    }
-
-    // Posts
-    const postsSnap = await getDocs(collection(db, 'posts'));
-    if (postsSnap.empty) {
-      for (const post of INITIAL_POSTS) {
-        await setDoc(doc(db, 'posts', post.id), post);
-      }
-    }
-  } catch (err) {
-    console.error('Error seeding initial data:', err);
-  }
+// Client-side production builds never seed demo data. Kept as a no-op for backwards-compatible App imports.
+export async function seedInitialDataIfEmpty(): Promise<void> {
+  return;
 }
 
 export function subscribeHalls(callback: (halls: Hall[]) => void) {
-  return onSnapshot(collection(db, 'halls'), (snap) => {
-    if (!snap.empty) {
-      callback(snap.docs.map((d) => d.data() as Hall));
-    } else {
-      callback(INITIAL_HALLS);
+  return onSnapshot(
+    collection(db, 'halls'),
+    (snap) => callback(snap.docs.map((d) => ({ ...d.data(), id: d.id } as Hall))),
+    (err) => {
+      console.error('Error subscribing to halls:', err);
+      callback([]);
     }
-  }, (err) => {
-    console.error('Error subscribing to halls:', err);
-    callback(INITIAL_HALLS);
-  });
+  );
 }
 
 export function subscribeServiceProviders(callback: (providers: ServiceProvider[]) => void) {
-  return onSnapshot(collection(db, 'serviceProviders'), (snap) => {
-    if (!snap.empty) {
-      callback(snap.docs.map((d) => d.data() as ServiceProvider));
-    } else {
-      callback(INITIAL_SERVICE_PROVIDERS);
+  return onSnapshot(
+    collection(db, 'serviceProviders'),
+    (snap) => callback(snap.docs.map((d) => ({ ...d.data(), id: d.id } as ServiceProvider))),
+    (err) => {
+      console.error('Error subscribing to service providers:', err);
+      callback([]);
     }
-  }, (err) => {
-    console.error('Error subscribing to service providers:', err);
-    callback(INITIAL_SERVICE_PROVIDERS);
-  });
+  );
 }
 
 export function subscribePosts(callback: (posts: FeedPost[]) => void) {
-  return onSnapshot(collection(db, 'posts'), (snap) => {
-    if (!snap.empty) {
-      const list = snap.docs.map((d) => d.data() as FeedPost);
+  return onSnapshot(
+    collection(db, 'posts'),
+    (snap) => {
+      const list = snap.docs.map((d) => ({ ...d.data(), id: d.id } as FeedPost));
       list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
       callback(list);
-    } else {
-      callback(INITIAL_POSTS);
+    },
+    (err) => {
+      console.error('Error subscribing to posts:', err);
+      callback([]);
     }
-  }, (err) => {
-    console.error('Error subscribing to posts:', err);
-    callback(INITIAL_POSTS);
-  });
+  );
 }
 
 export async function createPostInFirestore(post: Omit<FeedPost, 'id' | 'createdAt' | 'likesCount' | 'sharesCount'>): Promise<FeedPost> {
-  const firebaseUser = await ensureFirebaseAuth();
+  const firebaseUser = await requireFirebaseUser();
+  if (post.authorId && post.authorId !== firebaseUser.uid) throw new Error('لا يمكنك النشر باسم حساب آخر.');
   const docRef = doc(collection(db, 'posts'));
-  const authorId = post.authorId || firebaseUser?.uid || `author-${Date.now()}`;
-
   const newPost: FeedPost = {
     ...post,
-    id: `post-${Date.now()}`,
-    authorId,
+    id: docRef.id,
+    authorId: firebaseUser.uid,
     likesCount: 0,
     sharesCount: 0,
-    createdAt: 'قبل لحظات',
+    createdAt: new Date().toISOString(),
   };
-
   try {
     await setDoc(docRef, newPost);
+    return newPost;
   } catch (err) {
-    handleFirestoreError(err, OperationType.CREATE, `posts/${docRef.id}`);
+    return handleFirestoreError(err, OperationType.CREATE, `posts/${docRef.id}`);
   }
-
-  return newPost;
 }
