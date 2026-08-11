@@ -11,7 +11,6 @@ interface HeaderProps {
   favoritesCount: number;
   unreadNotificationsCount: number;
   currentAccountType: AccountType;
-  onChangeAccountType: (type: AccountType) => void;
   onOpenAuthModal?: () => void;
 }
 
