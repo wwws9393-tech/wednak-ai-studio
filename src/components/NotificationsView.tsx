@@ -10,10 +10,10 @@ interface NotificationsViewProps {
 }
 
 export const NotificationsView: React.FC<NotificationsViewProps> = ({
-  notifications,
-  onMarkAsRead,
-  onMarkAllAsRead,
-  onOpenNotificationTarget,
+  notifications = [],
+  onMarkAsRead = () => {},
+  onMarkAllAsRead = () => {},
+  onOpenNotificationTarget = () => {},
 }) => {
   const unreadCount = notifications.filter((n) => !n.read).length;
 

@@ -20,207 +20,128 @@ import { OwnerHomeView } from './components/OwnerHomeView';
 import { ServiceProviderHomeView } from './components/ServiceProviderHomeView';
 import { AdminHomeView } from './components/AdminHomeView';
 import { AuthModal } from './components/AuthModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
-import { INITIAL_HALLS } from './data/halls';
-import { INITIAL_SERVICE_PROVIDERS } from './data/serviceProviders';
-import { INITIAL_POSTS } from './data/posts';
-import { fetchUserFromFirestore, saveUserToFirestore, INITIAL_FIRESTORE_USERS, GUEST_ANONYMOUS_USER } from './data/usersDatabase';
-import { Hall, ServiceProvider, FeedPost, Booking, Complaint, AppNotification, UserProfile, AccountType } from './types';
+import { Hall, ServiceProvider, FeedPost, Booking, Complaint, AppNotification, UserProfile, AccountType, BookingStatus } from './types';
+import { GUEST_ANONYMOUS_USER } from './data/usersDatabase';
+import {
+  auth,
+  ensureFirebaseAuth,
+  fetchUserFromFirestore,
+  saveUserToFirestore,
+  subscribeBookings,
+  createBookingInFirestore,
+  updateBookingStatusInFirestore,
+  cancelBookingInFirestore,
+  subscribeUserFavorites,
+  toggleUserFavoriteInFirestore,
+  subscribeComplaints,
+  createComplaintInFirestore,
+  seedInitialDataIfEmpty,
+  subscribeHalls,
+  subscribeServiceProviders,
+  subscribePosts,
+  createPostInFirestore,
+} from './lib/firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { Building2, Camera, Sparkles, MapPin, ArrowLeft, Heart, Search, Calendar, ShieldAlert } from 'lucide-react';
 
 const CITIES = ['جميع المحافظات', 'بغداد', 'أربيل', 'البصرة', 'النجف', 'كربلاء', 'الموصل', 'السليمانية'];
 
 export function App() {
-  // 1. Core State & Local Persistence
-  const [halls, setHalls] = useState<Hall[]>(INITIAL_HALLS);
-  const [serviceProviders, setServiceProviders] = useState<ServiceProvider[]>(INITIAL_SERVICE_PROVIDERS);
-  const [posts, setPosts] = useState<FeedPost[]>(INITIAL_POSTS);
+  // 1. Core Real-Time Firestore State
+  const [halls, setHalls] = useState<Hall[]>([]);
+  const [serviceProviders, setServiceProviders] = useState<ServiceProvider[]>([]);
+  const [posts, setPosts] = useState<FeedPost[]>([]);
 
   const [selectedCity, setSelectedCity] = useState<string>('جميع المحافظات');
   const [currentTab, setCurrentTab] = useState<string>('home');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
 
   // User Profile
-  const [currentUser, setCurrentUser] = useState<UserProfile>(() => {
-    try {
-      const saved = localStorage.getItem('wednak_user_profile');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return GUEST_ANONYMOUS_USER;
-  });
-
-  useEffect(() => {
-    localStorage.setItem('wednak_user_profile', JSON.stringify(currentUser));
-
-    // Log required auth gate debug trace
-    let chosenRoute = 'CustomerHome';
-    if (currentUser.accountType === 'زبون') chosenRoute = 'CustomerHome';
-    else if (currentUser.accountType === 'صاحب قاعة') chosenRoute = 'OwnerHome';
-    else if (currentUser.accountType === 'مزود خدمة') chosenRoute = 'ServiceProviderHome';
-    else if (currentUser.accountType === 'مدير Admin') chosenRoute = 'AdminHome';
-
-    console.log(`[AuthGate Debug] uid الحالي: ${currentUser.id}`);
-    console.log(`[AuthGate Debug] accountType المقروء من Firestore: "${currentUser.accountType}"`);
-    console.log(`[AuthGate Debug] route الذي تم اختياره: "${chosenRoute}"`);
-  }, [currentUser]);
-
-  // Favorites - strictly scoped per currentUser.id to prevent cross-account leakage
+  const [currentUser, setCurrentUser] = useState<UserProfile>(GUEST_ANONYMOUS_USER);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
+  const [likedPostIds, setLikedPostIds] = useState<string[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [complaints, setComplaints] = useState<Complaint[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+
+  // Seed Firestore data if empty and set up listeners
   useEffect(() => {
-    if (!currentUser || !currentUser.id) {
-      setFavoriteIds([]);
-      return;
-    }
-    try {
-      const userFavKey = `wednak_favorites_${currentUser.id}`;
-      const saved = localStorage.getItem(userFavKey);
-      if (saved) {
-        setFavoriteIds(JSON.parse(saved));
-      } else {
-        // Default initial favorites for guest user only
-        if (currentUser.id === 'user-guest-101') {
-          setFavoriteIds(['hall-1', 'provider-1']);
+    seedInitialDataIfEmpty();
+
+    const unsubHalls = subscribeHalls(setHalls);
+    const unsubProviders = subscribeServiceProviders(setServiceProviders);
+    const unsubPosts = subscribePosts(setPosts);
+
+    return () => {
+      unsubHalls();
+      unsubProviders();
+      unsubPosts();
+    };
+  }, []);
+
+  // Auth & User Profile Synchronization
+  useEffect(() => {
+    let unsubBookings: () => void = () => {};
+    let unsubFavs: () => void = () => {};
+    let unsubComplaints: () => void = () => {};
+
+    ensureFirebaseAuth().then(() => {
+      setIsLoadingAuth(false);
+    });
+
+    const unsubAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      // Clean up previous listeners
+      unsubBookings();
+      unsubFavs();
+      unsubComplaints();
+
+      if (firebaseUser) {
+        // Fetch user profile doc from Firestore
+        const userDoc = await fetchUserFromFirestore(firebaseUser.uid);
+        if (userDoc) {
+          setCurrentUser(userDoc);
+          
+          let chosenRoute = 'CustomerHome';
+          if (userDoc.accountType === 'صاحب قاعة') chosenRoute = 'OwnerHome';
+          else if (userDoc.accountType === 'مزود خدمة') chosenRoute = 'ServiceProviderHome';
+          else if (userDoc.accountType === 'مدير Admin' || userDoc.accountType === 'مدير') chosenRoute = 'AdminHome';
+
+          console.log(`[AuthGate Debug] uid الحالي: ${firebaseUser.uid}`);
+          console.log(`[AuthGate Debug] accountType المقروء من Firestore: "${userDoc.accountType}"`);
+          console.log(`[AuthGate Debug] route الذي تم اختياره: "${chosenRoute}"`);
+
+          // Subscribe to real-time collections for this UID
+          unsubBookings = subscribeBookings(firebaseUser.uid, userDoc.accountType, setBookings);
+          unsubFavs = subscribeUserFavorites(firebaseUser.uid, setFavoriteIds);
+          unsubComplaints = subscribeComplaints(firebaseUser.uid, userDoc.accountType, setComplaints);
         } else {
-          setFavoriteIds([]);
+          setCurrentUser({
+            ...GUEST_ANONYMOUS_USER,
+            id: firebaseUser.uid,
+          });
+          unsubBookings = subscribeBookings(firebaseUser.uid, 'زبون', setBookings);
+          unsubFavs = subscribeUserFavorites(firebaseUser.uid, setFavoriteIds);
+          unsubComplaints = subscribeComplaints(firebaseUser.uid, 'زبون', setComplaints);
         }
+      } else {
+        setCurrentUser(GUEST_ANONYMOUS_USER);
+        setBookings([]);
+        setFavoriteIds([]);
+        setComplaints([]);
       }
-    } catch {
-      setFavoriteIds([]);
-    }
-  }, [currentUser?.id]);
+    });
 
-  useEffect(() => {
-    if (currentUser?.id) {
-      const userFavKey = `wednak_favorites_${currentUser.id}`;
-      localStorage.setItem(userFavKey, JSON.stringify(favoriteIds));
-    }
-  }, [favoriteIds, currentUser?.id]);
-
-  // Liked Posts
-  const [likedPostIds, setLikedPostIds] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('wednak_liked_posts');
-      return saved ? JSON.parse(saved) : ['post-1'];
-    } catch {
-      return ['post-1'];
-    }
-  });
-
-  useEffect(() => {
-    localStorage.setItem('wednak_liked_posts', JSON.stringify(likedPostIds));
-  }, [likedPostIds]);
-
-  // Bookings
-  const [bookings, setBookings] = useState<Booking[]>(() => {
-    try {
-      const saved = localStorage.getItem('wednak_bookings');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return [
-      {
-        id: 'WED-1001',
-        itemType: 'hall',
-        itemId: 'hall-1',
-        itemName: 'قاعة الملكة الفاخرة',
-        itemLocation: 'بغداد - الجادرية',
-        itemImage: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=800&q=80',
-        date: '2026-09-15',
-        timeSlot: 'مسائي (6:00 م - 11:00 م)',
-        guests: 350,
-        totalPrice: 3500000,
-        depositAmount: 500000,
-        notes: 'نرغب بحجز كوشة ملكية باللون الذهبي',
-        status: 'مقبول',
-        createdAt: 'قبل 3 أيام',
-        customerName: 'علي الفتلاوي',
-        customerPhone: '07701122334',
-        customerId: 'user-guest-101',
-        ownerId: 'owner-1',
-      },
-      {
-        id: 'WED-1002',
-        itemType: 'provider',
-        itemId: 'provider-1',
-        itemName: 'استوديو العريس الملكي للتصوير',
-        itemLocation: 'بغداد - المنصور',
-        itemImage: 'https://images.unsplash.com/photo-1537633552985-df8429e8048b?auto=format&fit=crop&w=800&q=80',
-        date: '2026-09-15',
-        timeSlot: 'مسائي (6:00 م - 11:00 م)',
-        totalPrice: 600000,
-        depositAmount: 120000,
-        notes: 'تغطية طيران Dron وألبوم حراري',
-        status: 'قيد المراجعة',
-        createdAt: 'قبل ساعتين',
-        customerName: 'علي الفتلاوي',
-        customerPhone: '07701122334',
-        customerId: 'user-guest-101',
-        ownerId: 'provider-user-1',
-      }
-    ];
-  });
-
-  useEffect(() => {
-    localStorage.setItem('wednak_bookings', JSON.stringify(bookings));
-  }, [bookings]);
-
-  // Complaints
-  const [complaints, setComplaints] = useState<Complaint[]>(() => {
-    try {
-      const saved = localStorage.getItem('wednak_complaints');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return [
-      {
-        id: 'CMP-501',
-        userId: 'user-guest-101',
-        userName: 'علي الفتلاوي',
-        userPhone: '07701122334',
-        subject: 'استفسار عن موعد دفع بقية المبلغ',
-        relatedItemName: 'قاعة الملكة الفاخرة',
-        description: 'أود الاستفسار هل يدفع المبلغ المتبقي قبل الحفلة بيوم أو في نفس يوم الحفلة؟',
-        status: 'تمت المعالجة',
-        createdAt: 'قبل يومين',
-        adminReply: 'أهلاً بك! يدفع المبلغ المتبقي عند استلام القاعة يوم الحفلة.',
-      }
-    ];
-  });
-
-  useEffect(() => {
-    localStorage.setItem('wednak_complaints', JSON.stringify(complaints));
-  }, [complaints]);
-
-  // Notifications
-  const [notifications, setNotifications] = useState<AppNotification[]>(() => {
-    try {
-      const saved = localStorage.getItem('wednak_notifications');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return [
-      {
-        id: 'notif-1',
-        title: 'تم قبول حجزك بنجاح! 🎉',
-        subtitle: 'قاعة الملكة الفاخرة وافقت على حجزك ليوم 2026-09-15. نتمنى لك ليلة زفاف مباركة!',
-        date: 'قبل يومين',
-        type: 'booking',
-        targetBookingId: 'WED-1001',
-        read: false,
-      },
-      {
-        id: 'notif-2',
-        title: 'عرض جديد في بغداد 🏷️',
-        subtitle: 'خصم 15% على تصوير العرائس من استوديو العريس الملكي عند الحجز هذا الأسبوع.',
-        date: 'قبل 5 ساعات',
-        type: 'offer',
-        targetProviderId: 'provider-1',
-        read: false,
-      }
-    ];
-  });
-
-  useEffect(() => {
-    localStorage.setItem('wednak_notifications', JSON.stringify(notifications));
-  }, [notifications]);
+    return () => {
+      unsubAuth();
+      unsubBookings();
+      unsubFavs();
+      unsubComplaints();
+    };
+  }, []);
 
   // Modals Active State
   const [selectedHallForModal, setSelectedHallForModal] = useState<Hall | null>(null);
@@ -229,12 +150,13 @@ export function App() {
   const [selectedBookingForDetails, setSelectedBookingForDetails] = useState<Booking | null>(null);
   const [activeLegalModal, setActiveLegalModal] = useState<'privacy' | 'terms' | 'support' | null>(null);
 
-  // 2. Handlers & Business Logic
-
-  const handleToggleFavorite = (id: string, type: 'hall' | 'provider') => {
-    setFavoriteIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
+  // Handlers
+  const handleToggleFavorite = async (id: string, type: 'hall' | 'provider' | 'post' = 'hall') => {
+    if (currentUser.isGuest) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+    await toggleUserFavoriteInFirestore(currentUser.id, id, type);
   };
 
   const handleTogglePostLike = (postId: string) => {
@@ -243,12 +165,7 @@ export function App() {
     );
   };
 
-  // Account Type Change Handler
   const handleChangeAccountType = async (newType: AccountType) => {
-    // 1. Clear any cached role to prevent inheritance conflicts
-    localStorage.removeItem('wednak_cached_role');
-    localStorage.removeItem('wednak_account_type');
-
     const updatedProfile: UserProfile = {
       ...currentUser,
       accountType: newType,
@@ -264,31 +181,26 @@ export function App() {
     await saveUserToFirestore(updatedProfile);
   };
 
-  // Login Success Handler from AuthModal
-  const handleLoginSuccess = (userDoc: UserProfile) => {
-    // 1. Wipe cached role
-    localStorage.removeItem('wednak_cached_role');
-    localStorage.removeItem('wednak_account_type');
-
-    // 2. Set active user profile fetched from Firestore
+  const handleLoginSuccess = async (userDoc: UserProfile) => {
     setCurrentUser(userDoc);
     setCurrentTab('home');
   };
 
-  // Logout Handler
-  const handleLogout = () => {
-    // 1. Wipe cached roles and user data
-    localStorage.removeItem('wednak_cached_role');
-    localStorage.removeItem('wednak_account_type');
-    localStorage.removeItem('wednak_user_profile');
-
-    // 2. Reset user state to clean guest
-    setCurrentUser(GUEST_ANONYMOUS_USER);
-
-    setIsAuthModalOpen(true);
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      await ensureFirebaseAuth();
+      setCurrentUser(GUEST_ANONYMOUS_USER);
+      setBookings([]);
+      setFavoriteIds([]);
+      setComplaints([]);
+      setIsAuthModalOpen(true);
+    } catch (err) {
+      console.error('Error signing out:', err);
+    }
   };
 
-  const handleCreateBooking = (bookingData: {
+  const handleCreateBooking = async (bookingData: {
     itemType: 'hall' | 'provider';
     itemId: string;
     itemName: string;
@@ -302,448 +214,220 @@ export function App() {
     notes: string;
     customerName: string;
     customerPhone: string;
+    customerId: string;
     ownerId?: string;
   }) => {
-    // 1. Guard against Self Booking
-    const isSelfBooking =
-      bookingData.ownerId === currentUser.id ||
-      (bookingData.itemType === 'hall' && currentUser.ownedHallId === bookingData.itemId) ||
-      (bookingData.itemType === 'provider' && currentUser.ownedProviderId === bookingData.itemId);
-
-    if (isSelfBooking) {
-      alert('خطأ: لا يمكنك حجز قناتك أو خدمتك بنفسك!');
-      return;
-    }
-
-    // 2. Guard against Double Booking (Accepted slot overlap on same item and date)
-    const hasOverlap = bookings.some(
-      (b) =>
-        b.itemId === bookingData.itemId &&
-        b.date === bookingData.date &&
-        b.timeSlot === bookingData.timeSlot &&
-        b.status === 'مقبول'
-    );
-
-    if (hasOverlap) {
-      alert('عذراً، هذا الموعد محجوز بالكامل مقدماً لهذا اليوم. يرجى اختيار تاريخ أو فترة زمنية أخرى.');
-      return;
-    }
-
-    const newBookingId = `WED-${Math.floor(1000 + Math.random() * 9000)}`;
-    const newBooking: Booking = {
-      id: newBookingId,
-      ...bookingData,
-      status: 'قيد المراجعة',
-      createdAt: 'الآن',
-      customerId: currentUser.id,
-    };
-
-    setBookings((prev) => [newBooking, ...prev]);
-
-    // Push instant notification
-    const newNotif: AppNotification = {
-      id: `notif-${Date.now()}`,
-      title: 'تم إرسال طلب الحجز 📩',
-      subtitle: `تم تقديم طلب حجز ${bookingData.itemName} بتاريخ ${bookingData.date}. سنوافيكم بالرد فوراً.`,
-      date: 'الآن',
-      type: 'booking',
-      targetBookingId: newBookingId,
-      read: false,
-    };
-    setNotifications((prev) => [newNotif, ...prev]);
-
-    // Redirect to Bookings View
-    setCurrentTab('bookings');
+    await createBookingInFirestore(bookingData);
   };
 
-  const handleCancelBooking = (bookingId: string) => {
-    setBookings((prev) =>
-      prev.map((b) => (b.id === bookingId ? { ...b, status: 'ملغي' } : b))
-    );
+  const handleUpdateBookingStatus = async (bookingId: string, newStatus: BookingStatus) => {
+    await updateBookingStatusInFirestore(bookingId, newStatus);
   };
 
-  // Hall & Provider Owners Update Actions
-  const handleUpdateHall = (updatedHall: Hall) => {
-    setHalls((prev) => prev.map((h) => (h.id === updatedHall.id ? updatedHall : h)));
+  const handleCancelBooking = async (bookingId: string) => {
+    await cancelBookingInFirestore(bookingId);
   };
 
-  const handleUpdateProvider = (updatedProvider: ServiceProvider) => {
-    setServiceProviders((prev) => prev.map((p) => (p.id === updatedProvider.id ? updatedProvider : p)));
-  };
-
-  const handleUpdateBookingStatus = (bookingId: string, newStatus: Booking['status']) => {
-    const targetBooking = bookings.find((b) => b.id === bookingId);
-
-    // Double booking guard when accepting
-    if (newStatus === 'مقبول' && targetBooking) {
-      const hasConflict = bookings.some(
-        (b) =>
-          b.id !== bookingId &&
-          b.itemId === targetBooking.itemId &&
-          b.date === targetBooking.date &&
-          b.timeSlot === targetBooking.timeSlot &&
-          b.status === 'مقبول'
-      );
-      if (hasConflict) {
-        alert('لا يمكن قبول هذا الحجز لأن هناك حجزاً آخر مقبولاً بالفعل في نفس التاريخ والوقت!');
-        return;
-      }
-    }
-
-    setBookings((prev) =>
-      prev.map((b) => (b.id === bookingId ? { ...b, status: newStatus } : b))
-    );
-
-    // Notify customer
-    if (targetBooking) {
-      const newNotif: AppNotification = {
-        id: `notif-${Date.now()}`,
-        title: newStatus === 'مقبول' ? 'تم قبول حجزك بنجاح! 🎉' : 'تم تحديث حالة الحجز ℹ️',
-        subtitle: `تمت تحديث حالة حجز ${targetBooking.itemName} بتاريخ ${targetBooking.date} إلى (${newStatus}).`,
-        date: 'الآن',
-        type: 'booking',
-        targetBookingId: bookingId,
-        read: false,
-      };
-      setNotifications((prev) => [newNotif, ...prev]);
-    }
-  };
-
-  const handleCreatePost = (postData: Omit<FeedPost, 'id' | 'createdAt' | 'likesCount' | 'sharesCount'>) => {
-    const newPost: FeedPost = {
-      id: `post-${Date.now()}`,
-      ...postData,
-      likesCount: 1,
-      sharesCount: 0,
-      createdAt: 'الآن',
-    };
-    setPosts((prev) => [newPost, ...prev]);
-  };
-
-  const handleCreateComplaint = (complaintData: {
-    subject: string;
-    relatedItemName?: string;
-    description: string;
-    userPhone: string;
-  }) => {
-    const newComplaint: Complaint = {
-      id: `CMP-${Math.floor(500 + Math.random() * 500)}`,
+  const handleCreateComplaint = async (data: { subject: string; relatedItemName?: string; description: string }) => {
+    await createComplaintInFirestore({
       userId: currentUser.id,
       userName: currentUser.name,
-      userPhone: complaintData.userPhone,
-      subject: complaintData.subject,
-      relatedItemName: complaintData.relatedItemName,
-      description: complaintData.description,
-      status: 'قيد المراجعة',
-      createdAt: 'الآن',
-    };
-
-    setComplaints((prev) => [newComplaint, ...prev]);
+      userPhone: currentUser.phone,
+      subject: data.subject,
+      relatedItemName: data.relatedItemName,
+      description: data.description,
+    });
   };
 
-  const handleUpdateComplaintStatus = (
-    complaintId: string,
-    status: Complaint['status'],
-    adminReply?: string
-  ) => {
-    setComplaints((prev) =>
-      prev.map((c) => (c.id === complaintId ? { ...c, status, adminReply } : c))
-    );
+  const handleCreatePost = async (postData: Omit<FeedPost, 'id' | 'createdAt' | 'likesCount' | 'sharesCount'>) => {
+    await createPostInFirestore(postData);
   };
 
-  // Notification Target Navigation
-  const handleOpenNotificationTarget = (notif: AppNotification) => {
-    if (notif.targetBookingId) {
-      const foundBooking = bookings.find((b) => b.id === notif.targetBookingId);
-      if (foundBooking) {
-        // Access guard: only requester, target owner, or admin can open details
-        const isParty =
-          foundBooking.customerId === currentUser.id ||
-          foundBooking.ownerId === currentUser.id ||
-          currentUser.ownedHallId === foundBooking.itemId ||
-          currentUser.ownedProviderId === foundBooking.itemId ||
-          currentUser.accountType === 'مدير Admin';
-
-        if (!isParty) {
-          alert('تنبيه: لا تملك صلاحية الوصول لتفاصيل هذا الحجز.');
-          return;
-        }
-
-        setSelectedBookingForDetails(foundBooking);
-        return;
-      }
-    }
-    if (notif.targetHallId) {
-      const foundHall = halls.find((h) => h.id === notif.targetHallId);
-      if (foundHall) {
-        setSelectedHallForModal(foundHall);
-        return;
-      }
-    }
-    if (notif.targetProviderId) {
-      const foundProvider = serviceProviders.find((sp) => sp.id === notif.targetProviderId);
-      if (foundProvider) {
-        setSelectedProviderForModal(foundProvider);
-        return;
-      }
-    }
-    setCurrentTab('bookings');
-  };
-
-  // Scoped bookings for currentUser to guarantee no data leakage between accounts
-  const userBookings = bookings.filter((b) => {
-    if (currentUser.accountType === 'مدير Admin') return true;
-    if (currentUser.accountType === 'صاحب قاعة') {
-      return b.ownerId === currentUser.id || b.itemId === currentUser.ownedHallId;
-    }
-    if (currentUser.accountType === 'مزود خدمة') {
-      return b.ownerId === currentUser.id || b.itemId === currentUser.ownedProviderId;
-    }
-    return b.customerId === currentUser.id;
-  });
-
-  // Filtered lists for Home
-  const displayedHalls = halls.filter(
+  // Filtered Items by City
+  const filteredHalls = halls.filter(
     (h) => selectedCity === 'جميع المحافظات' || h.city === selectedCity
   );
 
-  const displayedProviders = serviceProviders.filter(
+  const filteredProviders = serviceProviders.filter(
     (p) => selectedCity === 'جميع المحافظات' || p.city === selectedCity
   );
 
-  return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 font-['Cairo',sans-serif] pb-24 lg:pb-12 dir-rtl">
-      
-      {/* App Main Header */}
-      <Header
-        currentTab={currentTab}
-        onSelectTab={setCurrentTab}
-        selectedCity={selectedCity}
-        onSelectCity={setSelectedCity}
-        cities={CITIES}
-        favoritesCount={favoriteIds.length}
-        unreadNotificationsCount={notifications.filter((n) => !n.read).length}
-        currentAccountType={currentUser.accountType}
-        onChangeAccountType={handleChangeAccountType}
-        onOpenAuthModal={() => setIsAuthModalOpen(true)}
-      />
+  const filteredPosts = posts.filter(
+    (p) => selectedCity === 'جميع المحافظات' || p.city === selectedCity
+  );
 
-      {/* Main View Router */}
-      <main>
-        {currentTab === 'home' && (
-          <>
-            {/* 1. Owner Home View for "صاحب قاعة" */}
-            {currentUser.accountType === 'صاحب قاعة' ? (
-              <OwnerHomeView
-                currentUser={currentUser}
-                halls={halls}
-                bookings={bookings}
-                onUpdateHall={handleUpdateHall}
-                onUpdateBookingStatus={handleUpdateBookingStatus}
-                onCreatePost={handleCreatePost}
-              />
-            ) : currentUser.accountType === 'مزود خدمة' ? (
-              /* 2. Service Provider Home View for "مزود خدمة" */
-              <ServiceProviderHomeView
-                currentUser={currentUser}
-                serviceProviders={serviceProviders}
-                bookings={bookings}
-                onUpdateProvider={handleUpdateProvider}
-                onUpdateBookingStatus={handleUpdateBookingStatus}
-                onCreatePost={handleCreatePost}
-              />
-            ) : currentUser.accountType === 'مدير Admin' ? (
-              /* 3. Admin Home View for "مدير Admin" */
-              <AdminHomeView
-                currentUser={currentUser}
-                complaints={complaints}
-                bookings={bookings}
-                onUpdateComplaintStatus={handleUpdateComplaintStatus}
-              />
-            ) : (
-              /* 4. Customer Home View for "زبون" */
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
-                
-                {/* Hero Banner with Iraqi Wedding Vibe */}
-                <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-emerald-950 via-emerald-900 to-amber-950 text-white p-6 sm:p-10 shadow-xl border border-amber-400/20">
-                  <div className="relative z-10 max-w-2xl space-y-3">
-                    <span className="bg-amber-400 text-black text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider inline-block shadow-sm">
-                      تطبيق Wedنك ويدنك 💍 (Customer Home)
-                    </span>
-                    <h1 className="text-2xl sm:text-4xl font-black leading-tight text-amber-100">
-                      احجز قاعة ليلة العمر وأرقى خدمات الزفاف في العراق
-                    </h1>
-                    <p className="text-xs sm:text-sm text-gray-200 leading-relaxed font-medium">
-                      استكشف أفضل قاعات المناسبات، المصورين، الكوشات، وسيارات العرايس في {selectedCity === 'جميع المحافظات' ? 'كافة المحافظات' : selectedCity}. احجز موعدك وضمن عربونك بكل أمان.
-                    </p>
+  // Favorite Halls and Service Providers
+  const favoriteHalls = halls.filter((h) => favoriteIds.includes(h.id));
+  const favoriteProviders = serviceProviders.filter((p) => favoriteIds.includes(p.id));
 
-                    <div className="flex flex-wrap gap-2 pt-2">
-                      <button
-                        onClick={() => setCurrentTab('search')}
-                        className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-black font-extrabold text-xs rounded-2xl shadow-md transition-all active:scale-95 flex items-center gap-1.5"
-                        id="hero-search-btn"
-                      >
-                        <Search className="w-4 h-4" />
-                        <span>البحث السريع عن قاعة</span>
-                      </button>
+  // Render Logic based on Role and Tab
+  const renderRoleSpecificView = () => {
+    if (currentUser.accountType === 'صاحب قاعة') {
+      return (
+        <OwnerHomeView
+          currentUser={currentUser}
+          halls={halls}
+          bookings={bookings}
+          onUpdateHall={() => {}}
+          onUpdateBookingStatus={handleUpdateBookingStatus}
+          onCreatePost={handleCreatePost}
+        />
+      );
+    }
 
-                      <button
-                        onClick={() => setCurrentTab('explore')}
-                        className="px-5 py-2.5 bg-white/15 hover:bg-white/25 text-white font-bold text-xs rounded-2xl border border-white/20 transition-all flex items-center gap-1.5"
-                        id="hero-explore-btn"
-                      >
-                        <Sparkles className="w-4 h-4 text-amber-300" />
-                        <span>استكشاف منشورات القاعات</span>
-                      </button>
-                    </div>
-                  </div>
+    if (currentUser.accountType === 'مزود خدمة') {
+      return (
+        <ServiceProviderHomeView
+          currentUser={currentUser}
+          serviceProviders={serviceProviders}
+          bookings={bookings}
+          onUpdateServiceProvider={() => {}}
+          onUpdateBookingStatus={handleUpdateBookingStatus}
+          onCreatePost={handleCreatePost}
+        />
+      );
+    }
 
-                  {/* Decorative Graphic Element */}
-                  <div className="absolute top-0 left-0 w-full h-full opacity-10 bg-[radial-gradient(#f59e0b_1px,transparent_1px)] [background-size:16px_16px] pointer-events-none" />
+    if (currentUser.accountType === 'مدير Admin' || currentUser.accountType === 'مدير') {
+      return (
+        <AdminHomeView
+          currentUser={currentUser}
+          complaints={complaints}
+          bookings={bookings}
+          onUpdateComplaintStatus={handleUpdateComplaintStatus}
+        />
+      );
+    }
+
+    // Customer / Guest Tab Views
+    switch (currentTab) {
+      case 'home':
+        return (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-10">
+            {/* Banner */}
+            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-emerald-950 via-emerald-900 to-amber-950 p-6 sm:p-10 text-white shadow-xl border border-amber-500/20">
+              <div className="relative z-10 max-w-2xl space-y-3">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 text-xs font-bold border border-amber-500/30">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  منصة ويدنك العراقية لحجز الأعراس
+                </span>
+                <h1 className="text-2xl sm:text-4xl font-black text-amber-100 leading-tight">
+                  اختر قاعة أحلامك ومزودي خدمات زفافك في مكان واحد
+                </h1>
+                <p className="text-xs sm:text-sm text-gray-200">
+                  استكشف أفضل قاعات المناسبات، استوديوهات التصوير، وتنسيق الكوشات مع إمكانية الحجز المباشر بالأسعار الرسمية
+                </p>
+                <div className="pt-2 flex flex-wrap gap-3">
+                  <button
+                    onClick={() => setCurrentTab('search')}
+                    className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-black font-extrabold text-xs rounded-2xl shadow-md transition-all flex items-center gap-2"
+                  >
+                    <Search className="w-4 h-4" />
+                    <span>البحث والفلترة المتقدمة</span>
+                  </button>
+                  <button
+                    onClick={() => setCurrentTab('explore')}
+                    className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-2xl border border-white/20 transition-all flex items-center gap-2"
+                  >
+                    <Sparkles className="w-4 h-4 text-amber-300" />
+                    <span>تصفح عروض الاستكشاف</span>
+                  </button>
                 </div>
-
-                {/* Quick City Filter Pills */}
-                <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-gray-200">
-                  <span className="text-xs font-bold text-gray-500 shrink-0 ml-1">اختر المحافظة:</span>
-                  {CITIES.map((city) => (
-                    <button
-                      key={city}
-                      onClick={() => setSelectedCity(city)}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
-                        selectedCity === city
-                          ? 'bg-emerald-800 text-white shadow-xs scale-102'
-                          : 'bg-white text-gray-700 border border-gray-200 hover:bg-emerald-50'
-                      }`}
-                      id={`home-city-pill-${city}`}
-                    >
-                      {city}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Section 1: Halls Showcase */}
-                <section className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-lg font-extrabold text-gray-900 flex items-center gap-2">
-                        <Building2 className="w-5 h-5 text-emerald-800" />
-                        قاعات المناسبات والأعراس
-                      </h2>
-                      <p className="text-xs text-gray-500">القاعات المتاحة للحجز في {selectedCity}</p>
-                    </div>
-
-                    <button
-                      onClick={() => setCurrentTab('search')}
-                      className="text-xs font-bold text-emerald-800 hover:underline flex items-center gap-1"
-                    >
-                      عرض الكل ({displayedHalls.length}) <ArrowLeft className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {displayedHalls.map((hall) => (
-                      <HallCard
-                        key={hall.id}
-                        hall={hall}
-                        isFavorite={favoriteIds.includes(hall.id)}
-                        onToggleFavorite={handleToggleFavorite}
-                        onSelectHall={setSelectedHallForModal}
-                        onBookHall={(h) => setBookingItemForModal({ type: 'hall', data: h })}
-                      />
-                    ))}
-                  </div>
-                </section>
-
-                {/* Section 2: Explore Posts Carousel Highlight */}
-                <section className="space-y-4 bg-emerald-900/5 p-6 rounded-3xl border border-emerald-100">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-lg font-extrabold text-emerald-950 flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-amber-600" />
-                        عروض وكواليس التجهيزات الحية
-                      </h2>
-                      <p className="text-xs text-gray-600">أحدث الصور والفيديوهات مباشرة من أصحاب القاعات والاستوديوهات</p>
-                    </div>
-
-                    <button
-                      onClick={() => setCurrentTab('explore')}
-                      className="text-xs font-bold text-emerald-800 hover:underline flex items-center gap-1"
-                    >
-                      الانتقال لـ Explore <ArrowLeft className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {posts.slice(0, 2).map((post) => (
-                      <PostCard
-                        key={post.id}
-                        post={post}
-                        isLiked={likedPostIds.includes(post.id)}
-                        onToggleLike={handleTogglePostLike}
-                        onOpenTarget={(p) => {
-                          if (p.targetType === 'hall') {
-                            const h = halls.find((x) => x.id === p.targetId);
-                            if (h) setSelectedHallForModal(h);
-                          } else {
-                            const sp = serviceProviders.find((x) => x.id === p.targetId);
-                            if (sp) setSelectedProviderForModal(sp);
-                          }
-                        }}
-                        onBookTarget={(p) => {
-                          if (p.targetType === 'hall') {
-                            const h = halls.find((x) => x.id === p.targetId);
-                            if (h) setBookingItemForModal({ type: 'hall', data: h });
-                          } else {
-                            const sp = serviceProviders.find((x) => x.id === p.targetId);
-                            if (sp) setBookingItemForModal({ type: 'provider', data: sp });
-                          }
-                        }}
-                      />
-                    ))}
-                  </div>
-                </section>
-
-                {/* Section 3: Service Providers Showcase */}
-                <section className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-lg font-extrabold text-gray-900 flex items-center gap-2">
-                        <Camera className="w-5 h-5 text-amber-600" />
-                        مزودو خدمات الزفاف (مصورين، كوشات، صالونات، سيارات)
-                      </h2>
-                      <p className="text-xs text-gray-500">نخبة الكوادر الاحترافية لليلة زفاف مميزة</p>
-                    </div>
-
-                    <button
-                      onClick={() => setCurrentTab('search')}
-                      className="text-xs font-bold text-emerald-800 hover:underline flex items-center gap-1"
-                    >
-                      عرض الكل ({displayedProviders.length}) <ArrowLeft className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {displayedProviders.map((provider) => (
-                      <ServiceProviderCard
-                        key={provider.id}
-                        provider={provider}
-                        isFavorite={favoriteIds.includes(provider.id)}
-                        onToggleFavorite={handleToggleFavorite}
-                        onSelectProvider={setSelectedProviderForModal}
-                        onBookProvider={(sp) => setBookingItemForModal({ type: 'provider', data: sp })}
-                      />
-                    ))}
-                  </div>
-                </section>
-
               </div>
-            )}
-          </>
-        )}
+            </div>
 
-        {currentTab === 'explore' && (
+            {/* Halls Section */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                    <Building2 className="w-5 h-5 text-emerald-800" />
+                    قاعات الأعراس والمناسبات
+                  </h2>
+                  <p className="text-xs text-gray-500">أحدث القاعات المتاحة في {selectedCity}</p>
+                </div>
+                <button
+                  onClick={() => setCurrentTab('search')}
+                  className="text-xs font-bold text-emerald-800 hover:text-emerald-900 underline flex items-center gap-1"
+                >
+                  <span>عرض الكل ({filteredHalls.length})</span>
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredHalls.slice(0, 6).map((hall) => (
+                  <HallCard
+                    key={hall.id}
+                    hall={hall}
+                    isFavorite={favoriteIds.includes(hall.id)}
+                    onToggleFavorite={() => handleToggleFavorite(hall.id, 'hall')}
+                    onSelectHall={setSelectedHallForModal}
+                    onBookHall={(h) => setBookingItemForModal({ type: 'hall', data: h })}
+                    currentUser={currentUser}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Service Providers Section */}
+            <div className="space-y-4 pt-4 border-t border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                    <Camera className="w-5 h-5 text-emerald-800" />
+                    مزودو خدمات الزفاف والتصوير
+                  </h2>
+                  <p className="text-xs text-gray-500">استوديوهات، كوشات، صالونات، وبوفيهات مفتوحة</p>
+                </div>
+                <button
+                  onClick={() => setCurrentTab('search')}
+                  className="text-xs font-bold text-emerald-800 hover:text-emerald-900 underline flex items-center gap-1"
+                >
+                  <span>عرض الكل ({filteredProviders.length})</span>
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredProviders.slice(0, 6).map((provider) => (
+                  <ServiceProviderCard
+                    key={provider.id}
+                    provider={provider}
+                    isFavorite={favoriteIds.includes(provider.id)}
+                    onToggleFavorite={() => handleToggleFavorite(provider.id, 'provider')}
+                    onSelectProvider={setSelectedProviderForModal}
+                    onBookProvider={(p) => setBookingItemForModal({ type: 'provider', data: p })}
+                    currentUser={currentUser}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'search':
+        return (
+          <SearchView
+            halls={halls}
+            serviceProviders={serviceProviders}
+            selectedCity={selectedCity}
+            onSelectCity={setSelectedCity}
+            cities={CITIES}
+            favoriteIds={favoriteIds}
+            onToggleFavorite={handleToggleFavorite}
+            onSelectHall={setSelectedHallForModal}
+            onBookHall={(h) => setBookingItemForModal({ type: 'hall', data: h })}
+            onSelectProvider={setSelectedProviderForModal}
+            onBookProvider={(sp) => setBookingItemForModal({ type: 'provider', data: sp })}
+            currentUser={currentUser}
+          />
+        );
+
+      case 'explore':
+        return (
           <ExploreView
-            posts={posts}
+            posts={filteredPosts}
             halls={halls}
             serviceProviders={serviceProviders}
             likedPostIds={likedPostIds}
@@ -759,34 +443,19 @@ export function App() {
             cities={CITIES}
             currentUser={currentUser}
           />
-        )}
+        );
 
-        {currentTab === 'search' && (
-          <SearchView
-            halls={halls}
-            serviceProviders={serviceProviders}
-            favoriteIds={favoriteIds}
-            onToggleFavorite={handleToggleFavorite}
-            onSelectHall={setSelectedHallForModal}
-            onBookHall={(h) => setBookingItemForModal({ type: 'hall', data: h })}
-            onSelectProvider={setSelectedProviderForModal}
-            onBookProvider={(sp) => setBookingItemForModal({ type: 'provider', data: sp })}
-            selectedCity={selectedCity}
-            onSelectCity={setSelectedCity}
-            cities={CITIES}
-            currentUser={currentUser}
-          />
-        )}
-
-        {currentTab === 'bookings' && (
+      case 'bookings':
+        return (
           <BookingsView
-            bookings={userBookings}
+            bookings={bookings}
             onSelectBooking={setSelectedBookingForDetails}
             onSelectTab={setCurrentTab}
           />
-        )}
+        );
 
-        {currentTab === 'favorites' && (
+      case 'favorites':
+        return (
           <FavoritesView
             favoriteIds={favoriteIds}
             halls={halls}
@@ -798,58 +467,94 @@ export function App() {
             onBookProvider={(sp) => setBookingItemForModal({ type: 'provider', data: sp })}
             onSelectTab={setCurrentTab}
           />
-        )}
+        );
 
-        {currentTab === 'complaints' && (
-          <ComplaintsView
-            complaints={complaints}
-            currentUser={currentUser}
-            onSubmitComplaint={handleCreateComplaint}
-            isAdmin={currentUser.accountType === 'مدير Admin'}
-            onUpdateComplaintStatus={handleUpdateComplaintStatus}
-          />
-        )}
-
-        {currentTab === 'notifications' && (
+      case 'notifications':
+        return (
           <NotificationsView
             notifications={notifications}
             onMarkAsRead={(id) => setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))}
             onMarkAllAsRead={() => setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))}
-            onOpenNotificationTarget={handleOpenNotificationTarget}
+            onOpenNotificationTarget={(n) => {
+              if (n.type === 'booking') setCurrentTab('bookings');
+              else if (n.type === 'offer') setCurrentTab('explore');
+            }}
           />
-        )}
+        );
 
-        {currentTab === 'profile' && (
+      case 'complaints':
+        return (
+          <ComplaintsView
+            complaints={complaints}
+            currentUser={currentUser}
+            onSubmitComplaint={handleCreateComplaint}
+            isAdmin={currentUser.accountType === 'مدير Admin' || currentUser.accountType === 'مدير'}
+            onUpdateComplaintStatus={handleUpdateComplaintStatus}
+          />
+        );
+
+      case 'profile':
+        return (
           <ProfileView
             currentUser={currentUser}
-            onUpdateProfile={(updated) => setCurrentUser((prev) => ({ ...prev, ...updated }))}
+            onUpdateProfile={handleUpdateProfile}
             onSelectTab={setCurrentTab}
             onOpenPrivacyModal={() => setActiveLegalModal('privacy')}
             onOpenTermsModal={() => setActiveLegalModal('terms')}
             onOpenSupportModal={() => setActiveLegalModal('support')}
             onOpenAuthModal={() => setIsAuthModalOpen(true)}
           />
-        )}
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-['Cairo',sans-serif] dir-rtl pb-24">
+      {/* Header */}
+      <Header
+        currentTab={currentTab}
+        onSelectTab={setCurrentTab}
+        selectedCity={selectedCity}
+        onSelectCity={setSelectedCity}
+        cities={CITIES}
+        favoritesCount={favoriteIds.length}
+        unreadNotificationsCount={notifications.filter((n) => !n.read).length}
+        currentAccountType={currentUser.accountType}
+        onChangeAccountType={handleChangeAccountType}
+        onOpenAuthModal={() => setIsAuthModalOpen(true)}
+      />
+
+      {/* Main Content */}
+      <main className="flex-1">
+        <ErrorBoundary key={currentTab}>
+          {renderRoleSpecificView()}
+        </ErrorBoundary>
       </main>
 
-      {/* Mobile Navigation Bar */}
+      {/* Bottom Navigation */}
       <BottomNav
         currentTab={currentTab}
         onSelectTab={setCurrentTab}
+        accountType={currentUser.accountType}
+        unreadNotificationsCount={notifications.filter((n) => !n.read).length}
+        bookingsCount={bookings.length}
         favoritesCount={favoriteIds.length}
-        bookingsCount={userBookings.length}
       />
 
-      {/* Interactive Modals */}
+      {/* Modals */}
       <HallDetailsModal
         hall={selectedHallForModal}
         isOpen={!!selectedHallForModal}
         onClose={() => setSelectedHallForModal(null)}
         isFavorite={selectedHallForModal ? favoriteIds.includes(selectedHallForModal.id) : false}
-        onToggleFavorite={handleToggleFavorite}
-        onBookHall={(h) => setBookingItemForModal({ type: 'hall', data: h })}
-        currentUser={currentUser}
-        bookings={bookings}
+        onToggleFavorite={() => selectedHallForModal && handleToggleFavorite(selectedHallForModal.id, 'hall')}
+        onOpenBookingModal={(hall) => {
+          setSelectedHallForModal(null);
+          setBookingItemForModal({ type: 'hall', data: hall });
+        }}
       />
 
       <ServiceProviderDetailsModal
@@ -857,10 +562,11 @@ export function App() {
         isOpen={!!selectedProviderForModal}
         onClose={() => setSelectedProviderForModal(null)}
         isFavorite={selectedProviderForModal ? favoriteIds.includes(selectedProviderForModal.id) : false}
-        onToggleFavorite={handleToggleFavorite}
-        onBookProvider={(sp) => setBookingItemForModal({ type: 'provider', data: sp })}
-        currentUser={currentUser}
-        bookings={bookings}
+        onToggleFavorite={() => selectedProviderForModal && handleToggleFavorite(selectedProviderForModal.id, 'provider')}
+        onOpenBookingModal={(provider) => {
+          setSelectedProviderForModal(null);
+          setBookingItemForModal({ type: 'provider', data: provider });
+        }}
       />
 
       <BookingModal
@@ -880,11 +586,6 @@ export function App() {
         onCancelBooking={handleCancelBooking}
       />
 
-      <LegalSupportModals
-        activeModal={activeLegalModal}
-        onClose={() => setActiveLegalModal(null)}
-      />
-
       <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
@@ -893,6 +594,10 @@ export function App() {
         onLogout={handleLogout}
       />
 
+      <LegalSupportModals
+        activeModal={activeLegalModal}
+        onClose={() => setActiveLegalModal(null)}
+      />
     </div>
   );
 }

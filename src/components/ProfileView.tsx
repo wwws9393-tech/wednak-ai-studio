@@ -13,19 +13,19 @@ interface ProfileViewProps {
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
-  currentUser,
-  onUpdateProfile,
-  onSelectTab,
-  onOpenPrivacyModal,
-  onOpenTermsModal,
-  onOpenSupportModal,
+  currentUser = { id: 'guest', name: 'زائر', phone: '07700000000', email: '', city: 'بغداد', accountType: 'زبون' },
+  onUpdateProfile = () => {},
+  onSelectTab = () => {},
+  onOpenPrivacyModal = () => {},
+  onOpenTermsModal = () => {},
+  onOpenSupportModal = () => {},
   onOpenAuthModal,
 }) => {
-  const [name, setName] = useState(currentUser.name);
-  const [phone, setPhone] = useState(currentUser.phone);
-  const [email, setEmail] = useState(currentUser.email);
-  const [city, setCity] = useState(currentUser.city);
-  const [accountType, setAccountType] = useState<AccountType>(currentUser.accountType);
+  const [name, setName] = useState(currentUser?.name || '');
+  const [phone, setPhone] = useState(currentUser?.phone || '');
+  const [email, setEmail] = useState(currentUser?.email || '');
+  const [city, setCity] = useState(currentUser?.city || 'بغداد');
+  const [accountType, setAccountType] = useState<AccountType>(currentUser?.accountType || 'زبون');
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   const handleSave = (e: React.FormEvent) => {

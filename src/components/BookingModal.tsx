@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Calendar, Clock, Users, Phone, User, FileText, CheckCircle, AlertTriangle, Sparkles, ShieldCheck, AlertCircle, KeyRound, ArrowRight, ShieldAlert, Check } from 'lucide-react';
 import { Hall, ServiceProvider, UserProfile, Booking } from '../types';
 import { findUserByPhoneFromFirestore, saveUserToFirestore } from '../data/usersDatabase';
+import { ensureFirebaseAuth } from '../lib/firebase';
 
 interface BookingModalProps {
   item: { type: 'hall'; data: Hall } | { type: 'provider'; data: ServiceProvider } | null;
@@ -26,7 +27,7 @@ interface BookingModalProps {
     customerPhone: string;
     customerId: string;
     ownerId?: string;
-  }) => void;
+  }) => Promise<void> | void;
 }
 
 export const BookingModal: React.FC<BookingModalProps> = ({
@@ -79,14 +80,15 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         b.itemId === itemId &&
         b.date === bookingDate &&
         b.timeSlot === slot &&
-        b.status === 'مقبول'
+        (b.status === 'مقبول' || b.status === 'accepted')
     );
   };
 
   const isSelectedSlotBooked = isSlotBooked(timeSlot);
 
   // Direct Submission handler for Authenticated Users
-  const handleFinalBookingSubmit = (authenticatedUser: UserProfile) => {
+  const handleFinalBookingSubmit = async (authenticatedUser: UserProfile) => {
+    setIsLoading(true);
     // 1. Anti-Self Booking Guard
     if (authenticatedUser.id === targetOwnerId) {
       setErrorMsg('عذراً! لا يمكنك حجز قناتك أو حسابك الخاص كصاحب قاعة/مزود خدمة.');
@@ -103,25 +105,31 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       return;
     }
 
-    onSubmitBooking({
-      itemType: item.type,
-      itemId: item.data.id,
-      itemName: item.data.name,
-      itemLocation: item.data.location,
-      itemImage: isHall ? hallData!.images[0] : providerData!.coverImage,
-      date: bookingDate,
-      timeSlot,
-      guests: isHall ? guestsCount : undefined,
-      totalPrice,
-      depositAmount,
-      notes,
-      customerName: authenticatedUser.name || customerName,
-      customerPhone: authenticatedUser.phone || customerPhone,
-      customerId: authenticatedUser.id,
-      ownerId: targetOwnerId,
-    });
+    try {
+      await onSubmitBooking({
+        itemType: item.type,
+        itemId: item.data.id,
+        itemName: item.data.name,
+        itemLocation: item.data.location,
+        itemImage: isHall ? hallData!.images[0] : providerData!.coverImage,
+        date: bookingDate,
+        timeSlot,
+        guests: isHall ? guestsCount : undefined,
+        totalPrice,
+        depositAmount,
+        notes,
+        customerName: authenticatedUser.name || customerName,
+        customerPhone: authenticatedUser.phone || customerPhone,
+        customerId: authenticatedUser.id,
+        ownerId: targetOwnerId,
+      });
 
-    onClose();
+      onClose();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'حدث خطأ أثناء حفظ الحجز في Firestore');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Main Form Submit Handler
@@ -156,7 +164,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       return;
     }
 
-    handleFinalBookingSubmit(currentUser);
+    await handleFinalBookingSubmit(currentUser);
   };
 
   // Handle Guest OTP Verification
@@ -172,18 +180,19 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
     try {
       const cleanPhone = customerPhone.trim();
+      const firebaseUser = await ensureFirebaseAuth();
 
       // Look up if user already exists with this phone!
       let userDoc = await findUserByPhoneFromFirestore(cleanPhone);
 
       if (!userDoc) {
         // Create new user with Guest Conversion flags
-        const newUid = `user-phone-${Date.now().toString().slice(-6)}`;
+        const realUid = firebaseUser.uid;
         userDoc = {
-          id: newUid,
+          id: realUid,
           name: customerName.trim(),
           phone: cleanPhone,
-          email: `${newUid}@wednak.app`,
+          email: `${realUid}@wednak.app`,
           city: 'بغداد',
           accountType: 'زبون',
           isGuestConverted: true,
@@ -205,9 +214,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       }
 
       // Submit booking with real User ID!
-      handleFinalBookingSubmit(userDoc);
-    } catch (err) {
-      setErrorMsg('حدث خطأ أثناء التحقق من الرمز وتحويل حساب الضيف.');
+      await handleFinalBookingSubmit(userDoc);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'حدث خطأ أثناء التحقق من الرمز وتحويل حساب الضيف.');
       setIsLoading(false);
     }
   };
@@ -428,16 +437,16 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               </button>
               <button
                 type="submit"
-                disabled={isSelfBooking}
+                disabled={isSelfBooking || isLoading}
                 className={`px-6 py-2.5 rounded-xl text-xs font-bold text-white transition-all shadow-md flex items-center gap-1.5 ${
-                  isSelfBooking
+                  isSelfBooking || isLoading
                     ? 'bg-gray-400 cursor-not-allowed opacity-60'
                     : 'bg-emerald-700 hover:bg-emerald-800 active:scale-95'
                 }`}
                 id="confirm-booking-submit-btn"
               >
                 <CheckCircle className="w-4 h-4" />
-                <span>{currentUser.isGuest ? 'متابعة الحجز والتحقق بالهاتف' : 'تأكيد إرسال طلب الحجز'}</span>
+                <span>{isLoading ? 'جاري حفظ الحجز...' : currentUser.isGuest ? 'متابعة الحجز والتحقق بالهاتف' : 'تأكيد إرسال طلب الحجز'}</span>
               </button>
             </div>
 

@@ -6,96 +6,52 @@ service cloud.firestore {
     function isAuthenticated() {
       return request.auth != null;
     }
-    
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-
-    function isAdmin() {
-      return isAuthenticated() && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accountType == 'مدير Admin';
-    }
 
     // Users Collection
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isOwner(userId);
-      allow delete: if isAdmin();
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if true;
       
       // User-nested Favorites Collection
       match /favorites/{favoriteId} {
-        allow read, write: if isOwner(userId);
+        allow read, write: if true;
       }
     }
 
-    // Root Favorites Collection (alternative path)
+    // Root Favorites Collection
     match /favorites/{favoriteId} {
-      allow read: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid);
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow read, write: if true;
     }
 
-    // Bookings Collection: Strict Privacy & Self-Booking Prevention
+    // Bookings Collection
     match /bookings/{bookingId} {
-      // Read: Only Requester (customerId), Target Owner (ownerId), or Admin
-      allow read: if isAuthenticated() && (
-        resource.data.customerId == request.auth.uid ||
-        resource.data.ownerId == request.auth.uid ||
-        isAdmin()
-      );
-
-      // Create: Requester must be authenticated user, AND customerId CANNOT be equal to ownerId (Prevents self-booking on database level)
-      allow create: if isAuthenticated() &&
-        request.resource.data.customerId == request.auth.uid &&
-        request.resource.data.customerId != request.resource.data.ownerId;
-
-      // Update/Cancel: Only Requester, Target Owner, or Admin
-      allow update: if isAuthenticated() && (
-        resource.data.customerId == request.auth.uid ||
-        resource.data.ownerId == request.auth.uid ||
-        isAdmin()
-      );
-
-      allow delete: if isAdmin() || (
-        isAuthenticated() && (resource.data.customerId == request.auth.uid || resource.data.ownerId == request.auth.uid)
-      );
+      allow read, write: if true;
     }
 
     // Halls Collection
     match /halls/{hallId} {
-      allow read: if true;
-      allow create: if isAuthenticated();
-      allow update, delete: if isAuthenticated() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow read, write: if true;
     }
 
     // Service Providers Collection
     match /serviceProviders/{providerId} {
-      allow read: if true;
-      allow create: if isAuthenticated();
-      allow update, delete: if isAuthenticated() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow read, write: if true;
     }
 
     // Posts Collection
     match /posts/{postId} {
-      allow read: if true;
-      allow create: if isAuthenticated() && request.resource.data.authorId == request.auth.uid;
-      allow update, delete: if isAuthenticated() && (resource.data.authorId == request.auth.uid || isAdmin());
+      allow read, write: if true;
     }
 
     // Offers Collection
     match /offers/{offerId} {
-      allow read: if true;
-      allow create: if isAuthenticated() && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if isAuthenticated() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow read, write: if true;
     }
 
-    // Complaints Collection: Private per user, readable by Admin
+    // Complaints Collection
     match /complaints/{complaintId} {
-      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
-      allow delete: if isAdmin();
+      allow read, write: if true;
     }
   }
 }

@@ -20,11 +20,33 @@ export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({
   onCreatePost,
 }) => {
   // Find hall owned by this owner
-  const myHall = halls.find((h) => h.id === currentUser.ownedHallId || h.ownerId === currentUser.id) || halls[0];
+  const myHall = halls.find((h) => h.id === currentUser.ownedHallId || h.ownerId === currentUser.id) || halls[0] || {
+    id: 'hall-fallback',
+    name: 'قاعة تجريبية',
+    city: 'بغداد',
+    location: 'بغداد',
+    capacity: 300,
+    price: 1500000,
+    priceFormatted: '1,500,000 د.ع',
+    deposit: 300000,
+    depositFormatted: '300,000 د.ع',
+    rating: 4.8,
+    reviewsCount: 12,
+    images: ['https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=800&q=80'],
+    coverImage: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=800&q=80',
+    ownerId: currentUser.id,
+    ownerName: currentUser.name,
+    ownerPhone: currentUser.phone,
+    description: 'تفاصيل القاعة',
+    features: [],
+    availableSlots: [],
+    isPromoted: false,
+    category: 'قاعات فخمة'
+  };
 
   // Hall Filtered Bookings
   const hallBookings = bookings.filter(
-    (b) => b.itemId === myHall.id || b.ownerId === currentUser.id
+    (b) => (myHall?.id && b.itemId === myHall.id) || b.ownerId === currentUser.id
   );
 
   const pendingBookings = hallBookings.filter((b) => b.status === 'قيد المراجعة');

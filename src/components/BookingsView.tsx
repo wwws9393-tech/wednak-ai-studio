@@ -9,7 +9,7 @@ interface BookingsViewProps {
 }
 
 export const BookingsView: React.FC<BookingsViewProps> = ({
-  bookings,
+  bookings = [],
   onSelectBooking,
   onSelectTab,
 }) => {
@@ -135,13 +135,13 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                 </div>
                 <div className="text-left">
                   <span className="text-[10px] text-gray-500 block">العربون المسدد:</span>
-                  <span className="font-black text-amber-700">{b.depositAmount.toLocaleString()} د.ع</span>
+                  <span className="font-black text-amber-700">{(b.depositAmount || 0).toLocaleString()} د.ع</span>
                 </div>
               </div>
 
               {/* Details Action */}
               <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-xs">
-                <span className="text-[11px] text-gray-500">الفترة: {b.timeSlot.split(' ')[0]}</span>
+                <span className="text-[11px] text-gray-500">الفترة: {b.timeSlot ? b.timeSlot.split(' ')[0] : 'غير محدد'}</span>
                 <span className="font-bold text-emerald-700 group-hover:translate-x-[-2px] transition-transform flex items-center gap-1">
                   عرض التفاصيل <Eye className="w-3.5 h-3.5" />
                 </span>

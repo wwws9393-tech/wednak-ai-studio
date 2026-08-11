@@ -16,14 +16,14 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  currentTab,
+  currentTab = 'home',
   onSelectTab,
-  selectedCity,
+  selectedCity = 'جميع المحافظات',
   onSelectCity,
-  cities,
-  favoritesCount,
-  unreadNotificationsCount,
-  currentAccountType,
+  cities = [],
+  favoritesCount = 0,
+  unreadNotificationsCount = 0,
+  currentAccountType = 'زبون',
   onChangeAccountType,
   onOpenAuthModal,
 }) => {

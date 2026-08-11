@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { X, User, Lock, Phone, Sparkles, Building2, Camera, LogOut, CheckCircle2, ShieldCheck, ArrowRight, Eye, KeyRound, ShieldAlert, Check } from 'lucide-react';
 import { AccountType, UserProfile } from '../types';
 import { fetchUserFromFirestore, findUserByPhoneFromFirestore, saveUserToFirestore, GUEST_ANONYMOUS_USER } from '../data/usersDatabase';
+import { ensureFirebaseAuth, auth } from '../lib/firebase';
+import { signOut } from 'firebase/auth';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -39,9 +41,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   if (!isOpen) return null;
 
   // 1) Handle Direct Guest Login
-  const handleEnterAsGuest = () => {
-    onLoginSuccess(GUEST_ANONYMOUS_USER);
-    onClose();
+  const handleEnterAsGuest = async () => {
+    try {
+      await ensureFirebaseAuth();
+      onLoginSuccess(GUEST_ANONYMOUS_USER);
+      onClose();
+    } catch (err) {
+      console.error('Error entering as guest:', err);
+      onClose();
+    }
   };
 
   // 2) Send OTP
@@ -72,13 +80,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setErrorMessage('');
 
     try {
-      // Clean phone
       const cleanPhone = phone.trim();
+      const firebaseUser = await ensureFirebaseAuth();
 
       // Check if user with this phone already exists in Firestore!
       const existingUser = await findUserByPhoneFromFirestore(cleanPhone);
 
-      // If logging in or if existing user found: Protect existing account type!
       if (existingUser) {
         setSuccessMsg(`أهلاً بك مجدداً ${existingUser.name}! تم استعادة حسابك بنجاح.`);
         onLoginSuccess(existingUser);
@@ -97,12 +104,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       if (mode === 'reg_owner') chosenAccountType = 'صاحب قاعة';
       if (mode === 'reg_provider') chosenAccountType = 'مزود خدمة';
 
-      const newUid = `user-${Date.now().toString().slice(-6)}`;
+      const realUid = firebaseUser.uid;
       const newUserDoc: UserProfile = {
-        id: newUid,
+        id: realUid,
         name: name.trim() || (mode === 'reg_owner' ? hallName : 'مستخدم ويدنك'),
         phone: cleanPhone,
-        email: `${newUid}@wednak.app`,
+        email: `${realUid}@wednak.app`,
         city: city,
         accountType: chosenAccountType,
         hallName: mode === 'reg_owner' ? hallName : undefined,
@@ -121,6 +128,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       onLoginSuccess(newUserDoc);
       setTimeout(() => onClose(), 400);
     } catch (err) {
+      console.error(err);
       setErrorMessage('حدث خطأ أثناء حفظ بيانات الحساب في Firestore');
     } finally {
       setIsLoading(false);
@@ -482,7 +490,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </button>
         </div>
 
+        </div>
       </div>
-    </div>
   );
 };

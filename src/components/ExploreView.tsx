@@ -24,20 +24,20 @@ interface ExploreViewProps {
 }
 
 export const ExploreView: React.FC<ExploreViewProps> = ({
-  posts,
-  halls,
-  serviceProviders,
-  likedPostIds,
-  favoriteIds,
+  posts = [],
+  halls = [],
+  serviceProviders = [],
+  likedPostIds = [],
+  favoriteIds = [],
   onTogglePostLike,
   onToggleFavorite,
   onSelectHall,
   onBookHall,
   onSelectProvider,
   onBookProvider,
-  selectedCity,
+  selectedCity = 'جميع المحافظات',
   onSelectCity,
-  cities,
+  cities = ['جميع المحافظات', 'بغداد', 'أربيل', 'البصرة', 'النجف', 'كربلاء', 'الموصل', 'السليمانية'],
   currentUser,
 }) => {
   const [filterType, setFilterType] = useState<'all' | 'posts' | 'halls' | 'providers'>('all');

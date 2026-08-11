@@ -1,4 +1,4 @@
-export type AccountType = 'زبون' | 'صاحب قاعة' | 'مزود خدمة' | 'مدير Admin';
+export type AccountType = 'زبون' | 'صاحب قاعة' | 'مزود خدمة' | 'مدير Admin' | 'مدير';
 
 export interface Hall {
   id: string;
@@ -60,10 +60,11 @@ export interface FeedPost {
   city: string;
 }
 
-export type BookingStatus = 'قيد المراجعة' | 'مقبول' | 'مرفوض' | 'ملغي';
+export type BookingStatus = 'قيد المراجعة' | 'مقبول' | 'مرفوض' | 'ملغي' | 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'completed';
 
 export interface Booking {
   id: string;
+  bookingId?: string;
   itemType: 'hall' | 'provider';
   itemId: string;
   itemName: string;
@@ -71,16 +72,28 @@ export interface Booking {
   itemImage: string;
   date: string; // YYYY-MM-DD
   timeSlot: string;
+  startTime?: string;
+  endTime?: string;
+  period?: string;
   guests?: number;
   totalPrice: number;
   depositAmount: number;
   notes: string;
   status: BookingStatus;
   createdAt: string;
+  updatedAt?: string;
   customerName: string;
   customerPhone: string;
   customerId: string;
+  requesterId?: string;
+  requesterName?: string;
+  requesterPhone?: string;
+  requesterAccountType?: string;
   ownerId?: string;
+  targetOwnerId?: string;
+  targetType?: 'hall' | 'provider';
+  hallId?: string | null;
+  serviceProviderId?: string | null;
 }
 
 export interface Complaint {
@@ -122,4 +135,6 @@ export interface UserProfile {
   profileCompleted?: boolean;
   hallName?: string;
   serviceCategory?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }

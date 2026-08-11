@@ -22,11 +22,28 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
   // Find service provider belonging to this user
   const myProvider = serviceProviders.find(
     (sp) => sp.id === currentUser.ownedProviderId || sp.ownerId === currentUser.id
-  ) || serviceProviders[0];
+  ) || serviceProviders[0] || {
+    id: 'provider-fallback',
+    name: 'مزود خدمة تجريبي',
+    serviceCategory: 'تصوير وفيديو',
+    city: 'بغداد',
+    location: 'بغداد',
+    priceStart: 500000,
+    priceStartFormatted: '500,000 د.ع',
+    rating: 4.9,
+    reviewsCount: 15,
+    images: ['https://images.unsplash.com/photo-1537633552985-df8429e8048b?auto=format&fit=crop&w=800&q=80'],
+    coverImage: 'https://images.unsplash.com/photo-1537633552985-df8429e8048b?auto=format&fit=crop&w=800&q=80',
+    ownerId: currentUser.id,
+    phone: currentUser.phone,
+    description: 'تفاصيل الخدمة',
+    features: [],
+    isPromoted: false,
+  };
 
   // Provider Filtered Bookings
   const providerBookings = bookings.filter(
-    (b) => b.itemId === myProvider.id || b.ownerId === currentUser.id
+    (b) => (myProvider?.id && b.itemId === myProvider.id) || b.ownerId === currentUser.id
   );
 
   const pendingBookings = providerBookings.filter((b) => b.status === 'قيد المراجعة');

@@ -17,9 +17,9 @@ interface FavoritesViewProps {
 }
 
 export const FavoritesView: React.FC<FavoritesViewProps> = ({
-  favoriteIds,
-  halls,
-  serviceProviders,
+  favoriteIds = [],
+  halls = [],
+  serviceProviders = [],
   onToggleFavorite,
   onSelectHall,
   onBookHall,

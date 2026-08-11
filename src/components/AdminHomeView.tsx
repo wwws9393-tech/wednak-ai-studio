@@ -10,10 +10,10 @@ interface AdminHomeViewProps {
 }
 
 export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
-  currentUser,
-  complaints,
-  bookings,
-  onUpdateComplaintStatus,
+  currentUser = { id: 'admin', name: 'مدير النظام', phone: '07700000000', email: '', city: 'بغداد', accountType: 'مدير Admin' },
+  complaints = [],
+  bookings = [],
+  onUpdateComplaintStatus = () => {},
 }) => {
   const pendingComplaints = complaints.filter((c) => c.status !== 'تمت المعالجة');
 

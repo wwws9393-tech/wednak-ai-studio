@@ -16,19 +16,19 @@ interface ComplaintsViewProps {
 }
 
 export const ComplaintsView: React.FC<ComplaintsViewProps> = ({
-  complaints,
-  currentUser,
+  complaints = [],
+  currentUser = { id: 'guest', name: 'زائر', phone: '07700000000', email: '', city: 'بغداد', accountType: 'زبون' },
   onSubmitComplaint,
-  isAdmin,
+  isAdmin = false,
   onUpdateComplaintStatus,
 }) => {
   const [subject, setSubject] = useState('');
   const [relatedItemName, setRelatedItemName] = useState('');
   const [description, setDescription] = useState('');
-  const [userPhone, setUserPhone] = useState(currentUser.phone || '07700000000');
+  const [userPhone, setUserPhone] = useState(currentUser?.phone || '07700000000');
   const [submittedSuccess, setSubmittedSuccess] = useState(false);
 
-  const userComplaints = isAdmin ? complaints : complaints.filter((c) => c.userId === currentUser.id);
+  const userComplaints = isAdmin ? complaints : complaints.filter((c) => c.userId === (currentUser?.id || 'guest'));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

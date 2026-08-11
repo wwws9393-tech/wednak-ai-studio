@@ -20,17 +20,17 @@ interface SearchViewProps {
 }
 
 export const SearchView: React.FC<SearchViewProps> = ({
-  halls,
-  serviceProviders,
-  favoriteIds,
+  halls = [],
+  serviceProviders = [],
+  favoriteIds = [],
   onToggleFavorite,
   onSelectHall,
   onBookHall,
   onSelectProvider,
   onBookProvider,
-  selectedCity,
+  selectedCity = 'جميع المحافظات',
   onSelectCity,
-  cities,
+  cities = ['جميع المحافظات', 'بغداد', 'أربيل', 'البصرة', 'النجف', 'كربلاء', 'الموصل', 'السليمانية'],
   currentUser,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
