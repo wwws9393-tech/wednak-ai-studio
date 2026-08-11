@@ -29,18 +29,13 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      // User documents can contain phone/private profile information, so they are private by default.
       allow read: if isSelf(userId) || isAdmin();
-
       allow create: if isSelf(userId)
         && request.resource.data.id == userId
         && validUserRole(request.resource.data.accountType);
-
-      // A normal user cannot silently switch roles or promote themselves to admin.
       allow update: if isSelf(userId)
         && request.resource.data.id == resource.data.id
         && request.resource.data.accountType == resource.data.accountType;
-
       allow delete: if isSelf(userId) || isAdmin();
 
       match /favorites/{favoriteId} {
@@ -48,7 +43,6 @@ service cloud.firestore {
       }
     }
 
-    // Legacy root favorites are intentionally disabled. Favorites live under users/{uid}/favorites.
     match /favorites/{favoriteId} {
       allow read, write: if false;
     }
@@ -65,7 +59,6 @@ service cloud.firestore {
           || resource.data.targetOwnerId == request.auth.uid
           || isAdmin());
 
-      // Requester can only cancel their own booking and cannot rewrite booking identity.
       allow update: if signedIn() && immutableBookingIdentity() && (
         (resource.data.requesterId == request.auth.uid
           && request.resource.data.status in ['ملغي', 'cancelled'])
@@ -76,6 +69,23 @@ service cloud.firestore {
       );
 
       allow delete: if isAdmin();
+    }
+
+    // Atomic 30-minute reservation locks. Only the booking's target owner can create them;
+    // either booking party may delete its own locks during cancellation.
+    match /bookingLocks/{lockId} {
+      allow read: if signedIn()
+        && (resource.data.requesterId == request.auth.uid
+          || resource.data.targetOwnerId == request.auth.uid
+          || isAdmin());
+      allow create: if signedIn()
+        && request.resource.data.targetOwnerId == request.auth.uid
+        && request.resource.data.requesterId != request.auth.uid;
+      allow update: if false;
+      allow delete: if signedIn()
+        && (resource.data.requesterId == request.auth.uid
+          || resource.data.targetOwnerId == request.auth.uid
+          || isAdmin());
     }
 
     match /halls/{hallId} {
@@ -105,8 +115,7 @@ service cloud.firestore {
     match /complaints/{complaintId} {
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
       allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow update, delete: if isAdmin();
     }
   }
 }
