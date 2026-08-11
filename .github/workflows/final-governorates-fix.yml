@@ -1,0 +1,48 @@
+name: One-time governorates normalization
+
+on:
+  push:
+    branches: [chatgpt-production-hardening]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Add one-time governorates normalization'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt-production-hardening
+
+      - name: Normalize all Iraqi governorates
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          govs = "['جميع المحافظات', 'بغداد', 'البصرة', 'نينوى', 'أربيل', 'النجف', 'كربلاء', 'الديوانية', 'بابل', 'واسط', 'ذي قار', 'ميسان', 'المثنى', 'الأنبار', 'صلاح الدين', 'ديالى', 'كركوك', 'دهوك', 'السليمانية', 'حلبجة']"
+          app = Path('src/App.tsx')
+          s = app.read_text()
+          s, n = re.subn(r"const CITIES = \[[^;]+\];", f"const CITIES = {govs};", s, count=1)
+          if n != 1:
+            raise SystemExit('Could not normalize CITIES in App.tsx')
+          app.write_text(s)
+
+          auth = Path('src/components/AuthModal.tsx')
+          s = auth.read_text()
+          replacement = "const IRAQI_GOVERNORATES = [\n  'بغداد', 'البصرة', 'نينوى', 'أربيل', 'النجف', 'كربلاء', 'الديوانية', 'بابل', 'واسط',\n  'ذي قار', 'ميسان', 'المثنى', 'الأنبار', 'صلاح الدين', 'ديالى', 'كركوك', 'دهوك', 'السليمانية', 'حلبجة',\n];"
+          s, n = re.subn(r"const IRAQI_GOVERNORATES = \[[\s\S]*?\];", replacement, s, count=1)
+          if n != 1:
+            raise SystemExit('Could not normalize IRAQI_GOVERNORATES')
+          auth.write_text(s)
+          PY
+
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.tsx src/components/AuthModal.tsx
+          git commit -m "Support all 19 Iraqi governorates"
+          git push origin HEAD:chatgpt-production-hardening
