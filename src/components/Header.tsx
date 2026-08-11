@@ -1,5 +1,5 @@
 import React from 'react';
-import { Heart, Bell, Search, User, Sparkles, MapPin, ShieldAlert } from 'lucide-react';
+import { Heart, Bell, Search, User, Sparkles, MapPin } from 'lucide-react';
 import { AccountType } from '../types';
 
 interface HeaderProps {
@@ -24,17 +24,14 @@ export const Header: React.FC<HeaderProps> = ({
   favoritesCount = 0,
   unreadNotificationsCount = 0,
   currentAccountType = 'زبون',
-  onChangeAccountType,
   onOpenAuthModal,
 }) => {
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-amber-100 shadow-sm transition-all" id="app-main-header">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 gap-3">
-          
-          {/* Right Section: Brand & City Picker */}
           <div className="flex items-center gap-4">
-            <button 
+            <button
               onClick={() => onSelectTab('home')}
               className="flex items-center gap-2 group text-right focus:outline-none"
               id="brand-logo-btn"
@@ -50,7 +47,6 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             </button>
 
-            {/* City Selector Dropdown */}
             <div className="hidden md:flex items-center gap-1 bg-emerald-50/80 px-3 py-1.5 rounded-xl border border-emerald-100 text-xs font-semibold text-emerald-800">
               <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
               <select
@@ -66,7 +62,6 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Navigation Links for Desktop */}
           <nav className="hidden lg:flex items-center gap-1">
             {[
               { id: 'home', label: 'الرئيسية' },
@@ -91,10 +86,7 @@ export const Header: React.FC<HeaderProps> = ({
             ))}
           </nav>
 
-          {/* Left Section: Account Switcher & Shortcuts */}
           <div className="flex items-center gap-2">
-            
-            {/* Quick Search Button */}
             <button
               onClick={() => onSelectTab('search')}
               className={`p-2 rounded-xl text-gray-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors ${currentTab === 'search' ? 'bg-emerald-100 text-emerald-800' : ''}`}
@@ -104,7 +96,6 @@ export const Header: React.FC<HeaderProps> = ({
               <Search className="w-5 h-5" />
             </button>
 
-            {/* Notifications Icon with Badge */}
             <button
               onClick={() => onSelectTab('notifications')}
               className={`relative p-2 rounded-xl text-gray-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors ${currentTab === 'notifications' ? 'bg-emerald-100 text-emerald-800' : ''}`}
@@ -119,7 +110,6 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </button>
 
-            {/* Favorites Icon with Badge */}
             <button
               onClick={() => onSelectTab('favorites')}
               className={`relative p-2 rounded-xl text-gray-600 hover:text-rose-600 hover:bg-rose-50 transition-colors ${currentTab === 'favorites' ? 'bg-rose-50 text-rose-600' : ''}`}
@@ -134,34 +124,21 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </button>
 
-            {/* Account Type Selector Pill */}
             <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-xl text-xs font-semibold text-amber-900 shadow-2xs">
               <span className="text-[10px] text-amber-700 hidden sm:inline">نوع الحساب:</span>
-              <select
-                value={currentAccountType}
-                onChange={(e) => onChangeAccountType(e.target.value as AccountType)}
-                className="bg-transparent font-bold text-emerald-900 focus:outline-none cursor-pointer text-xs"
-                id="account-type-header-select"
-              >
-                <option value="زبون">زبون</option>
-                <option value="صاحب قاعة">صاحب قاعة</option>
-                <option value="مزود خدمة">مزود خدمة</option>
-                <option value="مدير Admin">مدير Admin</option>
-              </select>
-
+              <span className="font-bold text-emerald-900 text-xs" id="account-type-header-label">{currentAccountType}</span>
               {onOpenAuthModal && (
                 <button
                   onClick={onOpenAuthModal}
                   className="mr-1 text-[10px] bg-amber-200 hover:bg-amber-300 text-amber-950 font-black px-1.5 py-0.5 rounded-lg transition-colors"
-                  title="فتح نافذة تسجيل الدخول والتبديل"
+                  title="تسجيل الدخول أو تبديل الحساب"
                   id="open-auth-modal-header-btn"
                 >
-                  تبديل
+                  الحساب
                 </button>
               )}
             </div>
 
-            {/* Profile Tab Link */}
             <button
               onClick={() => onSelectTab('profile')}
               className={`p-2 rounded-xl border transition-all ${
@@ -175,7 +152,6 @@ export const Header: React.FC<HeaderProps> = ({
               <User className="w-5 h-5" />
             </button>
           </div>
-
         </div>
       </div>
     </header>
