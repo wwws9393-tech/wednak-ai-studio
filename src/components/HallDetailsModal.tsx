@@ -24,8 +24,6 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
   currentUser,
   bookings = [],
 }) => {
-  if (!isOpen || !hall) return null;
-
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => {
     const today = new Date();
@@ -52,6 +50,8 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
     return result;
   };
   const slotIsBooked = (slot: string) => slotMinutes(slot).some((minute) => busySet.has(minute));
+
+  if (!isOpen || !hall) return null;
 
   const isSelfHall = currentUser && (currentUser.id === hall.ownerId || currentUser.ownedHallId === hall.id);
 

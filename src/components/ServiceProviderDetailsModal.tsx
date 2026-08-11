@@ -24,8 +24,6 @@ export const ServiceProviderDetailsModal: React.FC<ServiceProviderDetailsModalPr
   currentUser,
   bookings = [],
 }) => {
-  if (!isOpen || !provider) return null;
-
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => {
     const today = new Date();
     return today.toISOString().split('T')[0];
@@ -51,6 +49,8 @@ export const ServiceProviderDetailsModal: React.FC<ServiceProviderDetailsModalPr
     return result;
   };
   const slotIsBooked = (slot: string) => slotMinutes(slot).some((minute) => busySet.has(minute));
+
+  if (!isOpen || !provider) return null;
 
   const isSelfProvider = currentUser && (currentUser.id === provider.ownerId || currentUser.ownedProviderId === provider.id);
 
