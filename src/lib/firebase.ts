@@ -38,6 +38,26 @@ export enum OperationType {
   CREATE = 'create', UPDATE = 'update', DELETE = 'delete', LIST = 'list', GET = 'get', WRITE = 'write',
 }
 
+function dateValueMillis(value: unknown): number {
+  if (!value) return 0;
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = typeof value === 'number' ? value : Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (typeof value === 'object') {
+    const timestamp = value as { toMillis?: () => number; toDate?: () => Date; seconds?: number; _seconds?: number };
+    if (typeof timestamp.toMillis === 'function') return timestamp.toMillis();
+    if (typeof timestamp.toDate === 'function') return timestamp.toDate().getTime();
+    const seconds = timestamp.seconds ?? timestamp._seconds;
+    if (typeof seconds === 'number') return seconds * 1000;
+  }
+  return 0;
+}
+
+function newestFirst(a: { createdAt?: unknown }, b: { createdAt?: unknown }): number {
+  return dateValueMillis(b.createdAt) - dateValueMillis(a.createdAt);
+}
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
   console.error('Firestore Error:', {
     error: error instanceof Error ? error.message : String(error),
@@ -169,7 +189,7 @@ export function subscribeBookings(uid: string, accountType: AccountType, callbac
       : query(ref, where('requesterId', '==', uid));
   return onSnapshot(q, (snap) => {
     const list = snap.docs.map((d) => ({ ...d.data(), id: d.id } as Booking));
-    list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    list.sort(newestFirst);
     callback(list);
   }, (err) => { console.error('Bookings listener failed:', err); onError?.(err.message); });
 }
@@ -177,7 +197,7 @@ export function subscribeBookings(uid: string, accountType: AccountType, callbac
 export function subscribeAllUsers(callback: (users: UserProfile[]) => void, onError?: (message:string)=>void) {
   return onSnapshot(collection(db, 'users'), (snap) => {
     const users = snap.docs.map((d)=>({ ...d.data(), id:d.id } as UserProfile));
-    users.sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+    users.sort(newestFirst);
     callback(users);
   }, (err)=>{ console.error('Users listener failed:',err); onError?.(err.message); });
 }
@@ -394,7 +414,7 @@ export function subscribeServiceProviders(callback: (providers: ServiceProvider[
 export function subscribePosts(callback: (posts: FeedPost[]) => void) {
   return onSnapshot(collection(db, 'posts'), (snap) => {
     const list = snap.docs.map((d) => ({ ...d.data(), id: d.id } as FeedPost));
-    list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    list.sort(newestFirst);
     callback(list);
   }, (err) => { console.error('Posts listener failed:', err); callback([]); });
 }
