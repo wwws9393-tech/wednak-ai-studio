@@ -14,6 +14,7 @@ import {
   getDocs,
   runTransaction,
   deleteDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import {
@@ -239,9 +240,23 @@ export async function deleteUserAndDataInFirestore(userId:string, admin:UserProf
     if(!result.data.success)throw new Error('لم يؤكد الخادم عملية الحذف.');
     return;
   } catch(error) {
-    const message=error instanceof Error?error.message:String(error);
-    if(message.includes('not-found')||message.includes('functions/not-found'))throw new Error('دالة الحذف غير منشورة. شغّل: npx firebase-tools deploy --only functions');
-    throw error;
+    console.warn('Admin function unavailable; using Firestore-only deletion:',error);
+  }
+  await setDoc(doc(db,'deletedUsers',userId),{userId,deletedAt:new Date().toISOString(),deletedBy:user.uid},{merge:true});
+  const targets:[string,string][]=[['halls','ownerId'],['serviceProviders','ownerId'],['posts','authorId'],['offers','ownerId'],['complaints','userId'],['bookings','requesterId'],['bookings','customerId'],['bookings','targetOwnerId'],['bookings','ownerId']];
+  const refs=new Map<string,ReturnType<typeof doc>>();
+  for(const [collectionName,field] of targets){
+    const snap=await getDocs(query(collection(db,collectionName),where(field,'==',userId)));
+    snap.docs.forEach(item=>refs.set(item.ref.path,item.ref));
+  }
+  const favorites=await getDocs(collection(db,'users',userId,'favorites'));
+  favorites.docs.forEach(item=>refs.set(item.ref.path,item.ref));
+  refs.set(`users/${userId}`,doc(db,'users',userId));
+  const allRefs=Array.from(refs.values());
+  for(let index=0;index<allRefs.length;index+=450){
+    const batch=writeBatch(db);
+    allRefs.slice(index,index+450).forEach(ref=>batch.delete(ref));
+    await batch.commit();
   }
 }
 
