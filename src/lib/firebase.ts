@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
   initializeFirestore,
   doc,
@@ -13,7 +14,6 @@ import {
   getDocs,
   runTransaction,
   deleteDoc,
-  writeBatch,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import {
@@ -233,25 +233,15 @@ export async function deleteUserAndDataInFirestore(userId:string, admin:UserProf
   const user=await requireFirebaseUser();
   if (admin.id!==user.uid || !['مدير','مدير Admin'].includes(admin.accountType)) throw new Error('هذه الصلاحية للمدير فقط.');
   if (!userId || userId===user.uid) throw new Error('لا يمكن حذف حساب المدير الحالي.');
-  await setDoc(doc(db,'deletedUsers',userId),{userId,deletedAt:new Date().toISOString(),deletedBy:user.uid},{merge:true});
-  await deleteDoc(doc(db,'users',userId));
-  const targets:[string,string][]=[['halls','ownerId'],['serviceProviders','ownerId'],['posts','authorId'],['offers','ownerId'],['complaints','userId'],['bookings','requesterId'],['bookings','customerId'],['bookings','targetOwnerId'],['bookings','ownerId']];
-  const refs=new Map<string,ReturnType<typeof doc>>();
-  for (const [collectionName,field] of targets) {
-    try {
-      const snap=await getDocs(query(collection(db,collectionName),where(field,'==',userId)));
-      snap.docs.forEach(item=>refs.set(item.ref.path,item.ref));
-    } catch(error) { console.warn(`Related ${collectionName} cleanup skipped:`,error); }
-  }
+  const removeUser=httpsCallable<{userId:string},{success:boolean}>(getFunctions(app,'us-central1'),'adminDeleteUser');
   try {
-    const favorites=await getDocs(collection(db,'users',userId,'favorites'));
-    favorites.docs.forEach(item=>refs.set(item.ref.path,item.ref));
-  } catch(error) { console.warn('Favorites cleanup skipped:',error); }
-  const allRefs=[...refs.values()];
-  for(let index=0;index<allRefs.length;index+=450){
-    const batch=writeBatch(db);
-    allRefs.slice(index,index+450).forEach(ref=>batch.delete(ref));
-    await batch.commit();
+    const result=await removeUser({userId});
+    if(!result.data.success)throw new Error('لم يؤكد الخادم عملية الحذف.');
+    return;
+  } catch(error) {
+    const message=error instanceof Error?error.message:String(error);
+    if(message.includes('not-found')||message.includes('functions/not-found'))throw new Error('دالة الحذف غير منشورة. شغّل: npx firebase-tools deploy --only functions');
+    throw error;
   }
 }
 
