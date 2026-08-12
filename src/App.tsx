@@ -44,6 +44,7 @@ import {
   subscribePosts,
   createPostInFirestore,
   deletePostInFirestore,
+  updatePostDescriptionInFirestore,
   subscribeAllUsers,
   setUserBlockedInFirestore,
   deleteUserAndDataInFirestore,
@@ -252,6 +253,7 @@ export function App() {
   const handleUpdateProfile = async (updatedFields: Partial<UserProfile>) => { const updatedUser = { ...currentUser, ...updatedFields }; setCurrentUser(updatedUser); await saveUserToFirestore(updatedUser); };
   const handleCreatePost = async (postData: Omit<FeedPost, 'id' | 'createdAt' | 'likesCount' | 'sharesCount'>) => { await createPostInFirestore(postData); };
   const handleDeletePost = async (postId: string) => { await deletePostInFirestore(postId); };
+  const handleUpdatePostDescription = async (postId:string,caption:string) => { await updatePostDescriptionInFirestore(postId,caption); };
 
   const filteredHalls = halls.filter((h) => selectedCity === 'جميع المحافظات' || h.city === selectedCity);
   const filteredProviders = serviceProviders.filter((p) => selectedCity === 'جميع المحافظات' || p.city === selectedCity);
@@ -269,10 +271,10 @@ export function App() {
 
   const renderRoleSpecificView = () => {
     if (currentUser.accountType === 'صاحب قاعة' && currentTab === 'home') {
-      return <OwnerHomeView currentUser={currentUser} halls={halls} bookings={bookings} posts={posts} onUpdateHall={() => {}} onUpdateBookingStatus={handleUpdateBookingStatus} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} />;
+      return <OwnerHomeView currentUser={currentUser} halls={halls} bookings={bookings} posts={posts} onUpdateHall={() => {}} onUpdateBookingStatus={handleUpdateBookingStatus} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} onUpdatePostDescription={handleUpdatePostDescription} />;
     }
     if (currentUser.accountType === 'مزود خدمة' && currentTab === 'home') {
-      return <ServiceProviderHomeView currentUser={currentUser} serviceProviders={serviceProviders} bookings={bookings} posts={posts} onUpdateServiceProvider={() => {}} onUpdateBookingStatus={handleUpdateBookingStatus} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} />;
+      return <ServiceProviderHomeView currentUser={currentUser} serviceProviders={serviceProviders} bookings={bookings} posts={posts} onUpdateServiceProvider={() => {}} onUpdateBookingStatus={handleUpdateBookingStatus} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} onUpdatePostDescription={handleUpdatePostDescription} />;
     }
     if (currentUser.accountType === 'مدير Admin' || currentUser.accountType === 'مدير') {
       return <AdminHomeView currentUser={currentUser} users={visibleAdminUsers} dataErrors={adminDataErrors} complaints={complaints} bookings={visibleAdminBookings} halls={halls} providers={serviceProviders} onOpenUser={setSelectedUserProfile} onOpenUserId={async(id)=>{const fallback=visibleAdminUsers.find(u=>u.id===id);try{const user=await fetchPublicUserProfile(id);if(user)setSelectedUserProfile(user);else if(fallback)setSelectedUserProfile(fallback);}catch{if(fallback)setSelectedUserProfile(fallback)}}} onBlockUserId={async(id)=>{if(!id||id.startsWith('demo-'))throw new Error('هذا العنصر تجريبي ولا يرتبط بحساب مسجل.');await setUserBlockedInFirestore(id,true,currentUser);}} onDeleteUser={handleDeleteAdminUser} onOpenHall={setSelectedHallForModal} onOpenProvider={setSelectedProviderForModal} onUpdateComplaintStatus={handleUpdateComplaintStatus} onUpdateBookingStatus={handleUpdateBookingStatus} />;
