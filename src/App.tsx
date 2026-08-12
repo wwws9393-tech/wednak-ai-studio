@@ -56,6 +56,9 @@ import { Building2, Camera, Sparkles, ArrowLeft, Search } from 'lucide-react';
 const CITIES = ['جميع المحافظات', 'بغداد', 'البصرة', 'نينوى', 'أربيل', 'النجف', 'كربلاء', 'الديوانية', 'بابل', 'واسط', 'ذي قار', 'ميسان', 'المثنى', 'الأنبار', 'صلاح الدين', 'ديالى', 'كركوك', 'دهوك', 'السليمانية', 'حلبجة'];
 
 function notificationStorageKey(uid: string) { return `wednak-read-notifications-${uid}`; }
+function readLegacyBookings(): Booking[] { try { const value=JSON.parse(localStorage.getItem('wednak_bookings')||'[]'); return Array.isArray(value)?value.map((b:any)=>({...b,requesterId:b.requesterId||b.customerId,targetOwnerId:b.targetOwnerId||b.ownerId,bookingId:b.bookingId||b.id})):[]; } catch { return []; } }
+function readLegacyUsers(): UserProfile[] { try { const saved=JSON.parse(localStorage.getItem('wednak_firestore_users')||'{}'); const initial:Record<string,UserProfile>={'user-guest-101':{id:'user-guest-101',name:'علي الفتلاوي',phone:'07701122334',email:'ali.wedding@gmail.com',city:'بغداد',accountType:'زبون'},'owner-1':{id:'owner-1',name:'سيف مجيد - قاعة الملكة',phone:'07709988776',email:'',city:'بغداد',accountType:'صاحب قاعة'},'provider-user-1':{id:'provider-user-1',name:'أحمد المصور',phone:'07703344556',email:'',city:'بغداد',accountType:'مزود خدمة'}}; return Object.values({...initial,...saved}); } catch { return []; } }
+function mergeById<T extends {id:string}>(primary:T[],legacy:T[]):T[]{const map=new Map(legacy.map(x=>[x.id,x]));primary.forEach(x=>map.set(x.id,x));return Array.from(map.values());}
 
 export function App() {
   const [halls, setHalls] = useState<Hall[]>(TEMP_DEMO_HALLS);
@@ -223,6 +226,8 @@ export function App() {
   const filteredHalls = halls.filter((h) => selectedCity === 'جميع المحافظات' || h.city === selectedCity);
   const filteredProviders = serviceProviders.filter((p) => selectedCity === 'جميع المحافظات' || p.city === selectedCity);
   const filteredPosts = posts.filter((p) => selectedCity === 'جميع المحافظات' || p.city === selectedCity);
+  const visibleAdminUsers=mergeById(allUsers,readLegacyUsers());
+  const visibleAdminBookings=mergeById(bookings,readLegacyBookings());
   const bookingsWithCurrentImages=bookings.map(b=>{if(b.itemType==='provider'){const p=serviceProviders.find(x=>x.id===b.itemId);return p?{...b,itemImage:p.avatar||p.coverImage||b.itemImage}:b;}const h=halls.find(x=>x.id===b.itemId);return h?{...b,itemImage:h.profileImageUrl||h.coverImage||h.images?.[0]||b.itemImage}:b;});
 
   const renderRoleSpecificView = () => {
@@ -233,7 +238,7 @@ export function App() {
       return <ServiceProviderHomeView currentUser={currentUser} serviceProviders={serviceProviders} bookings={bookings} posts={posts} onUpdateServiceProvider={() => {}} onUpdateBookingStatus={handleUpdateBookingStatus} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} />;
     }
     if (currentUser.accountType === 'مدير Admin' || currentUser.accountType === 'مدير') {
-      return <AdminHomeView currentUser={currentUser} users={allUsers} dataErrors={adminDataErrors} complaints={complaints} bookings={bookings} halls={halls} providers={serviceProviders} onOpenUser={setSelectedUserProfile} onOpenUserId={async(id)=>{const user=await fetchPublicUserProfile(id);if(user)setSelectedUserProfile(user)}} onOpenHall={setSelectedHallForModal} onOpenProvider={setSelectedProviderForModal} onUpdateComplaintStatus={handleUpdateComplaintStatus} onUpdateBookingStatus={handleUpdateBookingStatus} />;
+      return <AdminHomeView currentUser={currentUser} users={visibleAdminUsers} dataErrors={adminDataErrors} complaints={complaints} bookings={visibleAdminBookings} halls={halls} providers={serviceProviders} onOpenUser={setSelectedUserProfile} onOpenUserId={async(id)=>{const fallback=visibleAdminUsers.find(u=>u.id===id);try{const user=await fetchPublicUserProfile(id);if(user)setSelectedUserProfile(user);else if(fallback)setSelectedUserProfile(fallback);}catch{if(fallback)setSelectedUserProfile(fallback)}}} onBlockUserId={async(id)=>{const target=visibleAdminUsers.find(u=>u.id===id);if(!target)throw new Error('هذا العنصر تجريبي ولا يرتبط بحساب مسجل.');await setUserBlockedInFirestore(id,true,currentUser);}} onOpenHall={setSelectedHallForModal} onOpenProvider={setSelectedProviderForModal} onUpdateComplaintStatus={handleUpdateComplaintStatus} onUpdateBookingStatus={handleUpdateBookingStatus} />;
     }
 
     switch (currentTab) {
