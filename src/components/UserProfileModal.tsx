@@ -1,7 +1,7 @@
 import React from 'react';
-import { Ban, Building2, Calendar, MapPin, Phone, RotateCcw, Shield, User, X } from 'lucide-react';
+import { Ban, Building2, Calendar, MapPin, Phone, RotateCcw, Shield, Trash2, User, X } from 'lucide-react';
 import { Booking, UserProfile } from '../types';
-export const UserProfileModal:React.FC<{user:UserProfile|null;bookings:Booking[];isAdmin?:boolean;onClose:()=>void;onBlock?:(u:UserProfile,blocked:boolean)=>void;onOpenBusiness?:(u:UserProfile)=>void}>=({user,bookings,isAdmin,onClose,onBlock,onOpenBusiness})=>{
+export const UserProfileModal:React.FC<{user:UserProfile|null;bookings:Booking[];isAdmin?:boolean;onClose:()=>void;onBlock?:(u:UserProfile,blocked:boolean)=>void;onDelete?:(u:UserProfile)=>Promise<void>;onOpenBusiness?:(u:UserProfile)=>void}>=({user,bookings,isAdmin,onClose,onBlock,onDelete,onOpenBusiness})=>{
  if(!user)return null; const own=bookings.filter(b=>b.requesterId===user.id||b.targetOwnerId===user.id);
  return <div className="fixed inset-0 z-[70] bg-black/65 flex items-center justify-center p-3" dir="rtl"><div className="bg-white rounded-3xl max-w-xl w-full max-h-[92vh] overflow-y-auto shadow-2xl">
  <div className="relative h-40 bg-gradient-to-r from-emerald-950 to-amber-900 rounded-t-3xl overflow-hidden">{user.coverImageUrl&&<img src={user.coverImageUrl} className="w-full h-full object-cover opacity-60"/>}<button onClick={onClose} className="absolute top-3 left-3 p-2 bg-black/40 text-white rounded-full"><X className="w-4 h-4"/></button></div>
@@ -10,5 +10,6 @@ export const UserProfileModal:React.FC<{user:UserProfile|null;bookings:Booking[]
  {user.isBlocked&&<div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800"><Shield className="inline w-4 h-4"/> الحساب محظور: {user.blockReason}</div>}
  {(user.accountType==='صاحب قاعة'||user.accountType==='مزود خدمة')&&<button onClick={()=>onOpenBusiness?.(user)} className="w-full py-3 bg-emerald-700 text-white rounded-xl text-xs font-bold">فتح الصفحة الرئيسية للحساب</button>}
  {isAdmin&&onBlock&&<button onClick={()=>{const action=user.isBlocked?'رفع الحظر عن':'حظر';if(confirm(`هل تؤكد ${action} ${user.name}؟`))onBlock(user,!user.isBlocked)}} className={`w-full py-3 rounded-xl text-xs font-bold flex justify-center gap-2 ${user.isBlocked?'bg-emerald-100 text-emerald-800':'bg-rose-600 text-white'}`}>{user.isBlocked?<RotateCcw className="w-4 h-4"/>:<Ban className="w-4 h-4"/>}{user.isBlocked?'رفع الحظر':'حظر المستخدم تماماً'}</button>}
+ {isAdmin&&onDelete&&<button onClick={async()=>{if(!confirm(`تحذير: سيتم حذف حساب ${user.name} وجميع بياناته وقاعاته وخدماته ومنشوراته وحجوزاته نهائياً. هل أنت متأكد؟`))return;if(!confirm('تأكيد أخير: لا يمكن التراجع عن هذا الحذف.'))return;try{await onDelete(user);alert('تم حذف الحساب وجميع بياناته من النظام.')}catch(error){alert(error instanceof Error?error.message:'تعذر حذف الحساب')}}} className="w-full py-3 rounded-xl text-xs font-bold flex justify-center gap-2 bg-red-950 text-white"><Trash2 className="w-4 h-4"/>حذف الحساب وبياناته نهائياً</button>}
  </div></div></div>;
 };
