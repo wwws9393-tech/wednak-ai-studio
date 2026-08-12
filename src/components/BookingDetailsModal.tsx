@@ -15,6 +15,12 @@ interface BookingDetailsModalProps {
 export const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ booking, isOpen, onClose, onCancelBooking, currentUser, onUpdateStatus, onOpenRequester }) => {
   if (!isOpen || !booking) return null;
 
+  const formatDateTime = (value?: string) => {
+    if (!value) return 'غير مسجل';
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString('ar-IQ', { dateStyle: 'medium', timeStyle: 'short' });
+  };
+
   const getStatusBadge = (status: Booking['status']) => {
     switch (status) {
       case 'قيد المراجعة': case 'pending': return { bg: 'bg-amber-100 text-amber-900 border-amber-300', icon: Clock, text: 'قيد المراجعة والتدقيق' };
@@ -54,7 +60,7 @@ export const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ bookin
         <div className="p-5 space-y-4">
           <div className={`p-3 rounded-2xl border flex items-center gap-2.5 ${statusInfo.bg}`}>
             <StatusIcon className="w-5 h-5 shrink-0" />
-            <div><span className="text-xs font-bold block">{statusInfo.text}</span><span className="text-[10px] opacity-80">تاريخ إنشاء الطلب: {booking.createdAt}</span></div>
+            <div><span className="text-xs font-bold block">{statusInfo.text}</span><span className="text-[10px] opacity-80">تاريخ إنشاء الطلب: {formatDateTime(booking.createdAt)}</span></div>
           </div>
 
           {isCancelled && (
@@ -63,7 +69,8 @@ export const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ bookin
               <div>
                 <span className="text-[11px] text-rose-600 font-bold block">تم الإلغاء بواسطة</span>
                 <strong className="text-xs block">{cancellationActor}</strong>
-                {booking.cancelledAt && <span className="text-[10px] text-rose-500 block mt-1">وقت الإلغاء: {booking.cancelledAt}</span>}
+                {booking.cancelledAt && <span className="text-[10px] text-rose-500 block mt-1">وقت الإلغاء: {formatDateTime(booking.cancelledAt)}</span>}
+                {booking.cancellationReason && <span className="text-[10px] text-rose-700 block mt-1">السبب: {booking.cancellationReason}</span>}
               </div>
             </div>
           )}
@@ -91,8 +98,11 @@ export const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ bookin
           <div className="p-3 bg-gray-50 rounded-2xl border border-gray-200 space-y-1 text-xs">
             <div className="flex justify-between text-gray-700"><span>صاحب الحجز:</span><button onClick={()=>booking.requesterId&&onOpenRequester?.(booking.requesterId)} className="font-bold text-emerald-800 underline">{booking.customerName}</button></div>
             <div className="flex justify-between text-gray-700"><span>رقم الهاتف:</span><strong className="text-emerald-800 text-left dir-ltr">{booking.customerPhone}</strong></div>
-            {booking.notes && <div className="pt-2 border-t border-gray-200 text-gray-600"><span className="block text-[10px] font-bold text-gray-500">الملاحظات:</span><p className="text-xs bg-white p-2 rounded-lg border border-gray-200 mt-1">{booking.notes}</p></div>}
-            <div className="pt-2 border-t text-[11px]"><b>الدفع:</b> {booking.paymentStatus||'بانتظار الدفع'} • {booking.paymentMethod||'غير محدد'} {booking.paymentReference&&`• ${booking.paymentReference}`}</div>
+            <div className="flex justify-between text-gray-700"><span>نوع الحساب:</span><strong>{booking.requesterAccountType || 'زبون'}</strong></div>
+            <div className="flex justify-between text-gray-700"><span>معرّف المستخدم:</span><strong className="text-[10px] font-mono dir-ltr">{booking.requesterId || booking.customerId || 'غير مسجل'}</strong></div>
+            <div className="pt-2 border-t border-gray-200 text-gray-600"><span className="block text-[10px] font-bold text-gray-500">الملاحظات:</span><p className="text-xs bg-white p-2 rounded-lg border border-gray-200 mt-1">{booking.notes?.trim() || 'لا توجد ملاحظات مضافة'}</p></div>
+            <div className="pt-2 border-t text-[11px] space-y-1"><div><b>حالة الدفع:</b> {booking.paymentStatus||'بانتظار الدفع'}</div><div><b>وسيلة الدفع:</b> {booking.paymentMethod||'غير محددة'}</div>{booking.paymentReference&&<div><b>مرجع العملية:</b> <span className="font-mono">{booking.paymentReference}</span></div>}<div><b>وقت الدفع:</b> {formatDateTime(booking.paidAt)}</div></div>
+            <div className="pt-2 border-t text-[10px] text-gray-500 flex flex-wrap justify-between gap-2"><span>أُنشئ: {formatDateTime(booking.createdAt)}</span><span>آخر تحديث: {formatDateTime(booking.updatedAt)}</span></div>
           </div>
         </div>
 
