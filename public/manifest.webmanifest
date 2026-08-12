@@ -1,0 +1,27 @@
+{
+  "name": "WEDDING - ويدنك",
+  "short_name": "WEDDING",
+  "description": "حجوزات قاعات الأعراس وخدمات الزفاف في العراق",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#006b52",
+  "icons": [
+    {
+      "src": "/wednak-mark-green.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/wednak-mark-green.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
