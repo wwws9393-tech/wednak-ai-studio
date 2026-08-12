@@ -42,6 +42,7 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
   const [isEditing, setIsEditing] = useState(!persistedProvider);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [portfolioDirty, setPortfolioDirty] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [postTitle, setPostTitle] = useState('');
@@ -55,11 +56,11 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
   const [offerEnd, setOfferEnd] = useState('');
 
   useEffect(() => {
-    if (persistedProvider) {
+    if (persistedProvider && !portfolioDirty) {
       setDraft({ ...persistedProvider, portfolio: Array.isArray(persistedProvider.portfolio) ? persistedProvider.portfolio : [] });
       setIsEditing(false);
     }
-  }, [persistedProvider]);
+  }, [persistedProvider, portfolioDirty]);
 
   const providerBookings = bookings.filter((booking) => booking.targetOwnerId === currentUser.id && booking.itemType === 'provider');
   const pendingBookings = providerBookings.filter((booking) => booking.status === 'قيد المراجعة' || booking.status === 'pending');
@@ -68,13 +69,17 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
   const setField = <K extends keyof ServiceProvider>(key: K, value: ServiceProvider[K]) => setDraft((prev) => ({ ...prev, [key]: value }));
 
   const uploadSingle = async (file: File, kind: 'cover' | 'avatar' | 'portfolio' | 'post') => {
-    setError(''); setIsUploading(true);
+    setError(''); setMessage(''); setIsUploading(true);
     try {
       const folder = kind === 'cover' ? 'provider-cover' : kind === 'avatar' ? 'provider-avatar' : kind === 'portfolio' ? 'portfolio' : 'post-media';
       const url = await uploadOwnerMedia(file, folder);
       if (kind === 'cover') setDraft((prev) => ({ ...prev, coverImage: url }));
       if (kind === 'avatar') setDraft((prev) => ({ ...prev, avatar: url }));
-      if (kind === 'portfolio') setDraft((prev) => ({ ...prev, portfolio: [...(prev.portfolio || []), url] }));
+      if (kind === 'portfolio') {
+        setDraft((prev) => ({ ...prev, portfolio: [...(prev.portfolio || []), url] }));
+        setPortfolioDirty(true);
+        setMessage('تم رفع الملف. اضغط «حفظ معرض الأعمال» لتثبيته في صفحتك.');
+      }
       if (kind === 'post') { setPostMediaUrl(url); setPostMediaType(file.type.startsWith('video/') ? 'video' : 'image'); }
     } catch (err) { setError(err instanceof Error ? err.message : 'تعذر رفع الملف.'); }
     finally { setIsUploading(false); }
@@ -87,9 +92,34 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
     setIsSaving(true);
     try {
       const saved = await saveOwnedServiceProvider({ ...draft, ownerId: currentUser.id, portfolio: draft.portfolio || [], phone: currentUser.phone || draft.phone });
-      setDraft(saved); notifyUpdated(saved); setIsEditing(false); setMessage('تم حفظ صفحة الخدمة بنجاح.');
+      setDraft(saved); notifyUpdated(saved); setIsEditing(false); setPortfolioDirty(false); setMessage('تم حفظ صفحة الخدمة بنجاح.');
     } catch (err) { setError(err instanceof Error ? err.message : 'تعذر حفظ صفحة الخدمة.'); }
     finally { setIsSaving(false); }
+  };
+
+  const savePortfolio = async () => {
+    setError(''); setMessage('');
+    const base = persistedProvider || (draft.id ? draft : null);
+    if (!base) return setError('أنشئ صفحة الخدمة أولاً ثم احفظ معرض الأعمال.');
+    setIsSaving(true);
+    try {
+      const saved = await saveOwnedServiceProvider({
+        ...base,
+        ...draft,
+        id: base.id,
+        ownerId: currentUser.id,
+        phone: currentUser.phone || draft.phone || base.phone,
+        portfolio: Array.isArray(draft.portfolio) ? draft.portfolio : [],
+      });
+      setDraft(saved);
+      notifyUpdated(saved);
+      setPortfolioDirty(false);
+      setMessage('تم حفظ معرض الأعمال بنجاح وظهر في صفحة مزود الخدمة.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'تعذر حفظ معرض الأعمال.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const updateBooking = async (bookingId: string, status: Booking['status']) => {
@@ -172,16 +202,16 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
       <section className="bg-white p-5 rounded-3xl border border-gray-200 space-y-3">
         <div className="flex items-center justify-between"><h2 className="font-bold flex gap-2"><Camera className="w-5 h-5 text-emerald-700"/>معرض الأعمال</h2><span className="text-[11px] text-gray-500">صور وفيديوهات تظهر للزبون داخل صفحتك</span></div>
         <label className="flex items-center justify-center gap-2 border border-dashed rounded-2xl p-4 text-xs font-bold cursor-pointer bg-gray-50"><Upload className="w-4 h-4"/>إضافة صورة أو فيديو من المعرض<input type="file" accept="image/*,video/*" className="hidden" onChange={(e)=>{const f=e.target.files?.[0]; if(f) void uploadSingle(f,'portfolio');}}/></label>
-        {(draft.portfolio || []).length > 0 ? <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">{(draft.portfolio || []).map((url,idx)=><div key={`${url}-${idx}`} className="relative rounded-2xl overflow-hidden bg-gray-100 aspect-square border">{isVideoUrl(url) ? <video src={url} controls className="w-full h-full object-cover"/> : <img src={url} alt={`عمل ${idx+1}`} className="w-full h-full object-cover"/>}<button type="button" onClick={()=>setDraft((prev)=>({...prev,portfolio:prev.portfolio.filter((_,i)=>i!==idx)}))} className="absolute top-2 left-2 p-1.5 rounded-full bg-black/60 text-white"><Trash2 className="w-3.5 h-3.5"/></button></div>)}</div> : <div className="text-xs text-gray-500 text-center p-5 border border-dashed rounded-2xl">لم تضف أعمالاً بعد.</div>}
-        {persistedProvider && <button type="button" onClick={()=>void saveProvider({ preventDefault:()=>{} } as React.FormEvent)} className="px-4 py-2 bg-emerald-700 text-white rounded-xl text-xs font-bold">حفظ معرض الأعمال</button>}
+        {(draft.portfolio || []).length > 0 ? <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">{(draft.portfolio || []).map((url,idx)=><div key={`${url}-${idx}`} className="relative rounded-2xl overflow-hidden bg-gray-100 aspect-square border">{isVideoUrl(url) ? <video src={url} controls className="w-full h-full object-cover"/> : <img src={url} alt={`عمل ${idx+1}`} className="w-full h-full object-cover"/>}<button type="button" onClick={()=>{setDraft((prev)=>({...prev,portfolio:prev.portfolio.filter((_,i)=>i!==idx)}));setPortfolioDirty(true);}} className="absolute top-2 left-2 p-1.5 rounded-full bg-black/60 text-white"><Trash2 className="w-3.5 h-3.5"/></button></div>)}</div> : <div className="text-xs text-gray-500 text-center p-5 border border-dashed rounded-2xl">لم تضف أعمالاً بعد.</div>}
+        {persistedProvider && <button type="button" disabled={isSaving || isUploading} onClick={()=>void savePortfolio()} className="w-full sm:w-auto px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 disabled:bg-gray-400 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2"><Save className="w-4 h-4"/>{isUploading ? 'انتظر اكتمال الرفع...' : isSaving ? 'جاري الحفظ...' : portfolioDirty ? 'حفظ معرض الأعمال' : 'حفظ معرض الأعمال'}</button>}
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <form onSubmit={publishPost} className="bg-white p-5 rounded-3xl border space-y-3"><h2 className="font-bold flex gap-2"><Sparkles className="w-5 h-5 text-amber-600"/>نشر أعمالك في Explore</h2><input value={postTitle} onChange={(e)=>setPostTitle(e.target.value)} placeholder="عنوان المنشور" className="w-full px-3 py-2 border rounded-xl text-xs"/><textarea value={postCaption} onChange={(e)=>setPostCaption(e.target.value)} placeholder="الوصف" className="w-full px-3 py-2 border rounded-xl text-xs"/><label className="flex items-center justify-center gap-2 border border-dashed rounded-xl p-3 text-xs font-bold cursor-pointer bg-gray-50"><Upload className="w-4 h-4"/>اختيار صورة أو فيديو<input type="file" accept="image/*,video/*" className="hidden" onChange={(e)=>{const f=e.target.files?.[0]; if(f) void uploadSingle(f,'post');}}/></label>{postMediaUrl && <div className="h-36 rounded-xl overflow-hidden bg-gray-100">{postMediaType === 'video' ? <video src={postMediaUrl} controls className="w-full h-full object-cover"/> : <img src={postMediaUrl} className="w-full h-full object-cover" alt="المنشور"/>}</div>}<button disabled={isUploading} className="px-4 py-2 bg-amber-600 text-white rounded-xl text-xs font-bold">نشر</button></form>
+        <form onSubmit={publishPost} className="bg-white p-5 rounded-3xl border space-y-3"><h2 className="font-bold flex gap-2"><Sparkles className="w-5 h-5 text-amber-600"/>نشر أعمالك في Explore</h2><input value={postTitle} onChange={(e)=>setPostTitle(e.target.value)} placeholder="عنوان المنشور" className="w-full px-3 py-2 border rounded-xl text-xs"/><textarea value={postCaption} onChange={(e)=>setPostCaption(e.target.value)} placeholder="الوصف" className="w-full px-3 py-2 border rounded-xl text-xs"/><label className="flex items-center justify-center gap-2 border border-dashed rounded-xl p-3 text-xs font-bold cursor-pointer bg-gray-50"><Upload className="w-4 h-4"/>اختيار صورة أو فيديو<input type="file" accept="image/*,video/*" className="hidden" onChange={(e)=>{const f=e.target.files?.[0]; if(f) void uploadSingle(f,'post');}}/></label>{postMediaUrl && <div className="h-36 rounded-xl overflow-hidden bg-gray-100">{postMediaType === 'video' ? <video src={postMediaUrl} controls className="w-full h-full object-cover"/> : <img src={postMediaUrl} className="w-full h-full object-cover" alt="المنشور"/>}</div>}<button disabled={isUploading} className="px-4 py-2 bg-amber-600 disabled:bg-gray-400 text-white rounded-xl text-xs font-bold">نشر</button></form>
         <form onSubmit={publishOffer} className="bg-white p-5 rounded-3xl border space-y-3"><h2 className="font-bold flex gap-2"><Tag className="w-5 h-5 text-emerald-700"/>إنشاء عرض</h2><input value={offerTitle} onChange={(e)=>setOfferTitle(e.target.value)} placeholder="عنوان العرض" className="w-full px-3 py-2 border rounded-xl text-xs"/><textarea value={offerDescription} onChange={(e)=>setOfferDescription(e.target.value)} placeholder="تفاصيل العرض" className="w-full px-3 py-2 border rounded-xl text-xs"/><div className="grid grid-cols-3 gap-2"><input type="number" value={offerPrice || ''} onChange={(e)=>setOfferPrice(Number(e.target.value))} placeholder="سعر العرض" className="px-2 py-2 border rounded-xl text-xs"/><input type="date" value={offerStart} onChange={(e)=>setOfferStart(e.target.value)} className="px-2 py-2 border rounded-xl text-xs"/><input type="date" value={offerEnd} onChange={(e)=>setOfferEnd(e.target.value)} className="px-2 py-2 border rounded-xl text-xs"/></div><button className="px-4 py-2 bg-emerald-700 text-white rounded-xl text-xs font-bold">حفظ العرض</button></form>
       </div>
 
-      {ownPosts.length > 0 && <section className="bg-white p-5 rounded-3xl border space-y-3"><h2 className="font-bold">منشوراتي في Explore</h2><div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">{ownPosts.map((post)=><div key={post.id} className="border rounded-2xl overflow-hidden"><div className="h-36 bg-gray-100">{post.mediaType === 'video' ? <video src={post.mediaUrl} controls className="w-full h-full object-cover"/> : <img src={post.mediaUrl} className="w-full h-full object-cover" alt={post.title}/>}</div><div className="p-3"><b className="text-xs block">{post.title}</b><p className="text-[11px] text-gray-500 line-clamp-2">{post.caption}</p>{onDeletePost && <button type="button" onClick={()=>{if(window.confirm('حذف هذا المنشور من Explore؟')) void onDeletePost(post.id);}} className="mt-2 px-3 py-1.5 bg-rose-50 text-rose-700 rounded-xl text-xs font-bold flex items-center gap-1"><Trash2 className="w-3.5 h-3.5"/>حذف المنشور</button>}</div></div>)}</div></section>}
+      {ownPosts.length > 0 && <section className="bg-white p-5 rounded-3xl border space-y-3"><h2 className="font-bold flex gap-2"><Sparkles className="w-5 h-5 text-amber-600"/>منشوراتي في Explore</h2><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{ownPosts.map((post)=><div key={post.id} className="border rounded-2xl overflow-hidden bg-gray-50"><div className="h-36 bg-gray-100">{post.mediaType === 'video' ? <video src={post.mediaUrl} controls className="w-full h-full object-cover"/> : <img src={post.mediaUrl} alt={post.title} className="w-full h-full object-cover"/>}</div><div className="p-3"><b className="text-xs block">{post.title}</b><p className="text-[11px] text-gray-500 line-clamp-2 mt-1">{post.caption}</p>{onDeletePost && <button type="button" onClick={()=>{if(window.confirm('حذف هذا المنشور من Explore؟')) void onDeletePost(post.id);}} className="mt-2 text-xs font-bold text-rose-700 flex items-center gap-1"><Trash2 className="w-3.5 h-3.5"/>حذف المنشور</button>}</div></div>)}</div></section>}
     </div>
   );
 };
