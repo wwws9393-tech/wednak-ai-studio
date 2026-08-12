@@ -97,6 +97,10 @@ export interface Booking {
   targetType?: 'hall' | 'provider';
   hallId?: string | null;
   serviceProviderId?: string | null;
+  cancelledById?: string;
+  cancelledByRole?: 'زبون' | 'صاحب قاعة' | 'مزود خدمة' | 'مدير';
+  cancelledByName?: string;
+  cancelledAt?: string;
 }
 
 export interface Complaint {
