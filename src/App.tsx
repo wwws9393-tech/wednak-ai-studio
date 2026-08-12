@@ -31,7 +31,6 @@ import {
   subscribeBookings,
   createBookingInFirestore,
   updateBookingStatusInFirestore,
-  cancelBookingInFirestore,
   subscribeUserFavorites,
   toggleUserFavoriteInFirestore,
   subscribeComplaints,
@@ -44,10 +43,13 @@ import {
   createPostInFirestore,
   deletePostInFirestore,
 } from './lib/firebase';
+import { cancelBookingWithActorInFirestore } from './lib/bookingCancellation';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { Building2, Camera, Sparkles, ArrowLeft, Search } from 'lucide-react';
 
 const CITIES = ['جميع المحافظات', 'بغداد', 'البصرة', 'نينوى', 'أربيل', 'النجف', 'كربلاء', 'الديوانية', 'بابل', 'واسط', 'ذي قار', 'ميسان', 'المثنى', 'الأنبار', 'صلاح الدين', 'ديالى', 'كركوك', 'دهوك', 'السليمانية', 'حلبجة'];
+
+function notificationStorageKey(uid: string) { return `wednak-read-notifications-${uid}`; }
 
 export function App() {
   const [halls, setHalls] = useState<Hall[]>([]);
@@ -100,24 +102,75 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (currentUser.isGuest) { setNotifications([]); return; }
-    const bookingNotifications: AppNotification[] = bookings.slice(0, 30).map((booking) => {
+    if (currentUser.isGuest || !currentUser.id) { setNotifications([]); return; }
+    let readIds: string[] = [];
+    try { readIds = JSON.parse(localStorage.getItem(notificationStorageKey(currentUser.id)) || '[]'); } catch { readIds = []; }
+
+    const bookingNotifications: AppNotification[] = bookings.slice(0, 40).map((booking) => {
       const incoming = booking.targetOwnerId === currentUser.id;
-      const title = incoming
-        ? booking.status === 'قيد المراجعة' || booking.status === 'pending' ? 'طلب حجز جديد' : `تحديث حجز: ${booking.status}`
-        : `حجزك لدى ${booking.itemName}`;
-      return {
-        id: `booking-${booking.id}-${booking.status}`,
-        title,
-        subtitle: `${booking.itemName} • ${booking.date} • ${booking.startTime || booking.timeSlot}`,
-        date: booking.updatedAt || booking.createdAt,
-        type: 'booking',
-        targetBookingId: booking.id,
-        read: false,
-      };
+      const pending = booking.status === 'قيد المراجعة' || booking.status === 'pending';
+      const accepted = booking.status === 'مقبول' || booking.status === 'accepted';
+      const rejected = booking.status === 'مرفوض' || booking.status === 'rejected';
+      const cancelled = booking.status === 'ملغي' || booking.status === 'cancelled';
+      let title = '';
+      let subtitle = '';
+
+      if (incoming) {
+        if (pending) {
+          title = `طلب حجز جديد من ${booking.requesterName || booking.customerName}`;
+          subtitle = `${booking.itemName} • ${booking.date} • ${booking.startTime || booking.timeSlot} — اضغط لفتح الطلب وقبوله أو رفضه`;
+        } else if (cancelled) {
+          title = 'تم إلغاء حجز';
+          subtitle = `${booking.itemName} • ألغاه ${booking.cancelledByRole || 'أحد أطراف الحجز'}${booking.cancelledByName ? ` (${booking.cancelledByName})` : ''}`;
+        } else {
+          title = `تم تحديث الطلب إلى ${accepted ? 'مقبول' : rejected ? 'مرفوض' : booking.status}`;
+          subtitle = `${booking.itemName} • ${booking.date}`;
+        }
+      } else {
+        if (pending) {
+          title = `تم إرسال طلب الحجز إلى ${booking.itemName}`;
+          subtitle = `${booking.date} • ${booking.startTime || booking.timeSlot} — بانتظار رد صاحب الخدمة`;
+        } else if (accepted) {
+          title = `تم قبول حجزك لدى ${booking.itemName}`;
+          subtitle = `${booking.date} • ${booking.startTime || booking.timeSlot} — الموعد مثبت الآن`;
+        } else if (rejected) {
+          title = `تم رفض طلب حجزك لدى ${booking.itemName}`;
+          subtitle = `${booking.date} • يمكنك اختيار موعد أو خدمة أخرى`;
+        } else if (cancelled) {
+          title = `تم إلغاء الحجز لدى ${booking.itemName}`;
+          subtitle = `تم الإلغاء بواسطة ${booking.cancelledByRole || 'أحد أطراف الحجز'}${booking.cancelledByName ? ` (${booking.cancelledByName})` : ''}`;
+        } else {
+          title = `تحديث حجزك لدى ${booking.itemName}`;
+          subtitle = `${booking.date} • ${booking.status}`;
+        }
+      }
+
+      const id = `booking-${booking.id}-${booking.status}-${booking.updatedAt || booking.createdAt}`;
+      return { id, title, subtitle, date: booking.updatedAt || booking.createdAt, type: 'booking', targetBookingId: booking.id, read: readIds.includes(id) };
     });
-    setNotifications((prev) => bookingNotifications.map((n) => ({ ...n, read: prev.find((p) => p.id === n.id)?.read || false })));
+    setNotifications(bookingNotifications);
   }, [bookings, currentUser.id, currentUser.isGuest]);
+
+  const persistReadIds = (items: AppNotification[]) => {
+    if (!currentUser.id || currentUser.isGuest) return;
+    localStorage.setItem(notificationStorageKey(currentUser.id), JSON.stringify(items.filter((n) => n.read).map((n) => n.id).slice(0, 200)));
+  };
+
+  const markNotificationRead = (id: string) => {
+    setNotifications((prev) => {
+      const next = prev.map((n) => n.id === id ? { ...n, read: true } : n);
+      persistReadIds(next);
+      return next;
+    });
+  };
+
+  const markAllNotificationsRead = () => {
+    setNotifications((prev) => {
+      const next = prev.map((n) => ({ ...n, read: true }));
+      persistReadIds(next);
+      return next;
+    });
+  };
 
   const [selectedHallForModal, setSelectedHallForModal] = useState<Hall | null>(null);
   const [selectedProviderForModal, setSelectedProviderForModal] = useState<ServiceProvider | null>(null);
@@ -143,7 +196,7 @@ export function App() {
     customerName: string; customerPhone: string; customerId: string; ownerId?: string;
   }) => { await createBookingInFirestore(bookingData); };
   const handleUpdateBookingStatus = async (bookingId: string, newStatus: BookingStatus) => { await updateBookingStatusInFirestore(bookingId, newStatus); };
-  const handleCancelBooking = async (bookingId: string) => { await cancelBookingInFirestore(bookingId); };
+  const handleCancelBooking = async (bookingId: string) => { await cancelBookingWithActorInFirestore(bookingId, currentUser); };
   const handleCreateComplaint = async (data: { subject: string; relatedItemName?: string; description: string }) => {
     await createComplaintInFirestore({ userId: currentUser.id, userName: currentUser.name, userPhone: currentUser.phone, subject: data.subject, relatedItemName: data.relatedItemName, description: data.description });
   };
@@ -178,7 +231,7 @@ export function App() {
       case 'explore': return <ExploreView posts={filteredPosts} halls={halls} serviceProviders={serviceProviders} likedPostIds={likedPostIds} favoriteIds={favoriteIds} onTogglePostLike={handleTogglePostLike} onToggleFavorite={handleToggleFavorite} onSelectHall={setSelectedHallForModal} onBookHall={(h)=>setBookingItemForModal({type:'hall',data:h})} onSelectProvider={setSelectedProviderForModal} onBookProvider={(sp)=>setBookingItemForModal({type:'provider',data:sp})} selectedCity={selectedCity} onSelectCity={setSelectedCity} cities={CITIES} currentUser={currentUser}/>;
       case 'bookings': return <BookingsView bookings={bookings} onSelectBooking={setSelectedBookingForDetails} onSelectTab={setCurrentTab}/>;
       case 'favorites': return <FavoritesView favoriteIds={favoriteIds} halls={halls} serviceProviders={serviceProviders} onToggleFavorite={handleToggleFavorite} onSelectHall={setSelectedHallForModal} onBookHall={(h)=>setBookingItemForModal({type:'hall',data:h})} onSelectProvider={setSelectedProviderForModal} onBookProvider={(sp)=>setBookingItemForModal({type:'provider',data:sp})} onSelectTab={setCurrentTab}/>;
-      case 'notifications': return <NotificationsView notifications={notifications} onMarkAsRead={(id)=>setNotifications((prev)=>prev.map((n)=>n.id===id?{...n,read:true}:n))} onMarkAllAsRead={()=>setNotifications((prev)=>prev.map((n)=>({...n,read:true})))} onOpenNotificationTarget={(n)=>{ if(n.targetBookingId){ const booking=bookings.find((b)=>b.id===n.targetBookingId); if(booking){setSelectedBookingForDetails(booking); return;} } if(n.type==='booking') setCurrentTab('bookings'); else if(n.type==='offer') setCurrentTab('explore'); }}/>;
+      case 'notifications': return <NotificationsView notifications={notifications} onMarkAsRead={markNotificationRead} onMarkAllAsRead={markAllNotificationsRead} onOpenNotificationTarget={(n)=>{ if(n.targetBookingId){ const booking=bookings.find((b)=>b.id===n.targetBookingId); if(booking){setSelectedBookingForDetails(booking); return;} } if(n.type==='booking') setCurrentTab('bookings'); else if(n.type==='offer') setCurrentTab('explore'); }}/>;
       case 'complaints': return <ComplaintsView complaints={complaints} currentUser={currentUser} onSubmitComplaint={handleCreateComplaint} isAdmin={false} onUpdateComplaintStatus={handleUpdateComplaintStatus}/>;
       case 'profile': return <ProfileView currentUser={currentUser} onUpdateProfile={handleUpdateProfile} onSelectTab={setCurrentTab} onOpenPrivacyModal={()=>setActiveLegalModal('privacy')} onOpenTermsModal={()=>setActiveLegalModal('terms')} onOpenSupportModal={()=>setActiveLegalModal('support')} onOpenAuthModal={()=>setIsAuthModalOpen(true)}/>;
       default: return null;
