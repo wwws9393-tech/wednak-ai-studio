@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Star, MapPin, Users, Sparkles, CheckCircle, Heart, ArrowLeft, Shield, Calendar, Clock, Check, AlertCircle, ShieldCheck } from 'lucide-react';
 import { Hall, UserProfile, Booking } from '../types';
 import { subscribeAvailability } from '../lib/firebase';
@@ -28,6 +28,7 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [busyMinutes, setBusyMinutes] = useState<number[]>([]);
+  const modalScrollRef = useRef<HTMLDivElement | null>(null);
 
   const galleryImages = useMemo(() => {
     if (!hall) return [] as string[];
@@ -37,7 +38,11 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
   }, [hall]);
 
   useEffect(() => {
+    if (!isOpen) return;
     setActiveImageIndex(0);
+    requestAnimationFrame(() => {
+      if (modalScrollRef.current) modalScrollRef.current.scrollTop = 0;
+    });
   }, [hall?.id, isOpen]);
 
   useEffect(() => {
@@ -83,72 +88,78 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto" id="hall-details-modal-overlay">
-      <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-amber-100 flex flex-col justify-between my-auto">
-        <div className="relative h-64 sm:h-80 w-full bg-black overflow-hidden rounded-t-3xl">
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4" id="hall-details-modal-overlay">
+      <div
+        ref={modalScrollRef}
+        className="bg-white rounded-3xl max-w-3xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-amber-100 my-auto"
+      >
+        <div className="relative h-72 sm:h-80 w-full bg-black overflow-hidden rounded-t-3xl">
           <img
             src={mainImage}
             alt={hall.name}
             className="w-full h-full object-cover"
-            onError={(e) => { (e.currentTarget as HTMLImageElement).src = FALLBACK_HALL_IMAGE; }}
+            onError={(e) => { e.currentTarget.src = FALLBACK_HALL_IMAGE; }}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-black/10" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/10" />
 
-          <button onClick={onClose} className="absolute top-4 left-4 p-2.5 rounded-full bg-black/50 text-white hover:bg-black/80 shadow-md" id="close-hall-modal-btn">
+          <button onClick={onClose} className="absolute top-4 left-4 z-10 p-2.5 rounded-full bg-black/55 text-white hover:bg-black/80 shadow-md" id="close-hall-modal-btn">
             <X className="w-5 h-5" />
           </button>
 
           <button
             onClick={() => onToggleFavorite(hall.id, 'hall')}
-            className={`absolute top-4 right-4 p-2.5 rounded-full backdrop-blur-md shadow-md ${isFavorite ? 'bg-rose-500 text-white' : 'bg-white/85 text-gray-800 hover:text-rose-500'}`}
+            className={`absolute top-4 right-4 z-10 p-2.5 rounded-full backdrop-blur-md shadow-md ${isFavorite ? 'bg-rose-500 text-white' : 'bg-white/90 text-gray-800 hover:text-rose-500'}`}
             id="favorite-btn-in-hall-modal"
           >
             <Heart className={`w-5 h-5 ${isFavorite ? 'fill-current' : ''}`} />
           </button>
 
-          <div className="absolute bottom-5 right-5 left-5 text-white" dir="rtl">
-            {hall.category && <span className="bg-amber-500 text-black text-xs font-black px-3 py-1 rounded-lg inline-block mb-2">{hall.category}</span>}
-            <h2 className="text-2xl sm:text-3xl font-black leading-tight drop-shadow-md">{hall.name}</h2>
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-white/95">
-              <span className="flex items-center gap-1.5">
-                <MapPin className="w-4 h-4 text-amber-300 shrink-0" />
-                <span>{hall.location || hall.city || 'العراق'}</span>
-              </span>
-              <span className="hidden sm:inline text-white/60">•</span>
-              <span className="flex items-center gap-1.5 font-bold text-amber-300">
-                <Star className="w-4 h-4 fill-current shrink-0" />
-                <span>{safeRating.toFixed(1)} ({safeReviews} تقييم)</span>
-              </span>
+          <div className="absolute bottom-0 right-0 left-0 p-5 pt-16 text-white" dir="rtl">
+            <div className="flex items-end justify-between gap-4">
+              <div className="min-w-0">
+                {hall.category && <span className="bg-amber-500 text-black text-xs font-black px-3 py-1 rounded-lg inline-block mb-2">{hall.category}</span>}
+                <h2 className="text-2xl sm:text-3xl font-black leading-tight drop-shadow-md truncate">{hall.name}</h2>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-white/95">
+                  <span className="flex items-center gap-1.5">
+                    <MapPin className="w-4 h-4 text-amber-300 shrink-0" />
+                    <span>{hall.location || hall.city || 'العراق'}</span>
+                  </span>
+                  <span className="flex items-center gap-1.5 font-bold text-amber-300">
+                    <Star className="w-4 h-4 fill-current shrink-0" />
+                    <span>{safeRating.toFixed(1)} ({safeReviews} تقييم)</span>
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
         {galleryImages.length > 1 && (
-          <div className="bg-white border-b border-gray-100 px-4 py-3">
-            <div className="flex gap-2 overflow-x-auto pb-1" dir="rtl">
+          <div className="bg-white border-b border-gray-100 px-4 py-3" dir="rtl">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
               {galleryImages.map((img, idx) => (
                 <button
                   key={`${img}-${idx}`}
                   type="button"
                   onClick={() => setActiveImageIndex(idx)}
-                  className={`relative w-20 h-14 sm:w-24 sm:h-16 rounded-xl overflow-hidden shrink-0 border-2 bg-gray-100 transition-all ${activeImageIndex === idx ? 'border-emerald-600 ring-2 ring-emerald-100' : 'border-gray-200 opacity-80 hover:opacity-100'}`}
+                  className={`relative w-20 h-14 sm:w-24 sm:h-16 rounded-xl overflow-hidden shrink-0 border-2 bg-gray-100 transition-all ${activeImageIndex === idx ? 'border-emerald-600 shadow-sm' : 'border-gray-200 opacity-85 hover:opacity-100'}`}
                   aria-label={`عرض الصورة ${idx + 1}`}
                 >
                   <img
                     src={img}
                     alt={`صورة ${idx + 1} من ${hall.name}`}
                     className="w-full h-full object-cover"
-                    onError={(e) => { (e.currentTarget as HTMLImageElement).src = FALLBACK_HALL_IMAGE; }}
+                    onError={(e) => { e.currentTarget.src = FALLBACK_HALL_IMAGE; }}
                   />
-                  {activeImageIndex === idx && <span className="absolute inset-0 bg-emerald-900/10" />}
+                  {activeImageIndex === idx && <span className="absolute inset-0 ring-2 ring-inset ring-emerald-600 rounded-lg" />}
                 </button>
               ))}
             </div>
           </div>
         )}
 
-        <div className="p-5 space-y-5">
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="p-5 space-y-5" dir="rtl">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="bg-emerald-50/70 p-3 rounded-2xl border border-emerald-100/80">
               <span className="text-[11px] text-emerald-800 font-semibold block">سعر الحجز الشامل</span>
               <span className="text-base font-black text-emerald-900">{priceText}</span>
@@ -157,7 +168,7 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
               <span className="text-[11px] text-amber-800 font-semibold block">العربون المطلوب للتأكيد</span>
               <span className="text-base font-black text-amber-900">{depositText}</span>
             </div>
-            <div className="bg-blue-50/70 p-3 rounded-2xl border border-blue-100/80 col-span-2 sm:col-span-1">
+            <div className="bg-blue-50/70 p-3 rounded-2xl border border-blue-100/80">
               <span className="text-[11px] text-blue-800 font-semibold block">سعة الضيوف</span>
               <span className="text-base font-black text-blue-900 flex items-center gap-1"><Users className="w-4 h-4 text-blue-600" /> {safeCapacity} شخص</span>
             </div>
@@ -211,10 +222,10 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
           </div>
         </div>
 
-        <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4 flex items-center justify-between rounded-b-3xl">
+        <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4 flex items-center justify-between gap-4 rounded-b-3xl" dir="rtl">
           <div><span className="text-[10px] text-gray-500 block">الإجمالي بالدينار العراقي:</span><span className="text-lg font-black text-emerald-900">{priceText}</span></div>
           {!isSelfHall ? (
-            <button onClick={() => { onClose(); onBookHall(hall); }} className="px-6 py-3 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm rounded-2xl shadow-md flex items-center gap-2" id="modal-direct-book-hall-btn">
+            <button onClick={() => { onClose(); onBookHall(hall); }} className="px-5 sm:px-6 py-3 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm rounded-2xl shadow-md flex items-center gap-2 shrink-0" id="modal-direct-book-hall-btn">
               <Calendar className="w-4 h-4" /><span>تأكيد موعد الحجز</span><ArrowLeft className="w-4 h-4" />
             </button>
           ) : (
