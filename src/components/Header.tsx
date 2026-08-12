@@ -41,7 +41,7 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
               <div className="flex flex-col">
                 <span className="font-bold text-xl text-emerald-900 tracking-tight flex items-center gap-1">
-                  Wedنك <span className="text-amber-600 text-xs font-normal bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">ويدنك</span>
+                  WEDDING <span className="text-amber-600 text-xs font-normal bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">ويدنك</span>
                 </span>
                 <span className="text-[10px] text-gray-500 font-medium">حجوزات القاعات والزفاف في العراق</span>
               </div>
