@@ -13,6 +13,7 @@ import {
   getDocs,
   runTransaction,
   deleteDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import {
@@ -226,6 +227,27 @@ export async function setUserBlockedInFirestore(userId:string, blocked:boolean, 
   const user=await requireFirebaseUser();
   if (admin.id!==user.uid || !['مدير','مدير Admin'].includes(admin.accountType)) throw new Error('هذه الصلاحية للمدير فقط.');
   await updateDoc(doc(db,'users',userId), blocked ? {isBlocked:true,blockedAt:new Date().toISOString(),blockedBy:user.uid,blockReason:reason,updatedAt:new Date().toISOString()} : {isBlocked:false,blockedAt:null,blockedBy:null,blockReason:null,updatedAt:new Date().toISOString()});
+}
+
+export async function deleteUserAndDataInFirestore(userId:string, admin:UserProfile) {
+  const user=await requireFirebaseUser();
+  if (admin.id!==user.uid || !['مدير','مدير Admin'].includes(admin.accountType)) throw new Error('هذه الصلاحية للمدير فقط.');
+  if (!userId || userId===user.uid) throw new Error('لا يمكن حذف حساب المدير الحالي.');
+  const targets:[string,string][]=[['halls','ownerId'],['serviceProviders','ownerId'],['posts','authorId'],['offers','ownerId'],['complaints','userId'],['bookings','requesterId'],['bookings','targetOwnerId']];
+  const refs=new Map<string,ReturnType<typeof doc>>();
+  for (const [collectionName,field] of targets) {
+    const snap=await getDocs(query(collection(db,collectionName),where(field,'==',userId)));
+    snap.docs.forEach(item=>refs.set(item.ref.path,item.ref));
+  }
+  const favorites=await getDocs(collection(db,'users',userId,'favorites'));
+  favorites.docs.forEach(item=>refs.set(item.ref.path,item.ref));
+  const allRefs=[...refs.values(),doc(db,'users',userId)];
+  for(let index=0;index<allRefs.length;index+=450){
+    const batch=writeBatch(db);
+    allRefs.slice(index,index+450).forEach(ref=>batch.delete(ref));
+    await batch.commit();
+  }
+  await setDoc(doc(db,'deletedUsers',userId),{userId,deletedAt:new Date().toISOString(),deletedBy:user.uid},{merge:true});
 }
 
 export function subscribeAvailability(itemId: string, date: string, callback: (busyMinutes: number[]) => void) {
