@@ -84,6 +84,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const confirmationRef = useRef<ConfirmationResult | null>(null);
   const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
+  const recaptchaContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -101,7 +102,14 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
     return unsubscribe;
   }, [isOpen, item?.data.id, bookingDate]);
 
-  useEffect(() => () => { recaptchaRef.current?.clear(); recaptchaRef.current = null; }, []);
+  const disposeRecaptcha = () => {
+    try { recaptchaRef.current?.clear(); } catch (error) { console.warn('Guest reCAPTCHA clear skipped:', error); }
+    recaptchaRef.current = null;
+    recaptchaContainerRef.current?.remove();
+    recaptchaContainerRef.current = null;
+  };
+
+  useEffect(() => () => disposeRecaptcha(), []);
 
   const selectedPeriodConfig = useMemo(() => PERIODS.find((p) => p.key === selectedPeriod) || PERIODS[1], [selectedPeriod]);
   const busySet = useMemo(() => new Set(busyMinutes), [busyMinutes]);
@@ -145,8 +153,15 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
   const sendGuestOtp = async () => {
     if (!customerName.trim()) throw new Error('اكتب اسمك لإكمال الحجز.');
     const phone = normalizeIraqiPhone(customerPhone);
-    recaptchaRef.current?.clear();
-    const verifier = new RecaptchaVerifier(auth, 'guest-booking-recaptcha', { size: 'invisible', callback: () => undefined });
+    disposeRecaptcha();
+    const container = document.createElement('div');
+    container.id = `guest-booking-recaptcha-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    container.style.position = 'fixed';
+    container.style.left = '-10000px';
+    container.style.top = '-10000px';
+    document.body.appendChild(container);
+    recaptchaContainerRef.current = container;
+    const verifier = new RecaptchaVerifier(auth, container, { size: 'invisible', callback: () => undefined, 'expired-callback': disposeRecaptcha });
     recaptchaRef.current = verifier;
     confirmationRef.current = await signInWithPhoneNumber(auth, phone, verifier);
     setCustomerPhone(phone); setGuestStep('otp_form');

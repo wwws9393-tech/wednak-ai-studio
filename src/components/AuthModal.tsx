@@ -86,13 +86,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [successMsg, setSuccessMsg] = useState('');
   const confirmationRef = useRef<ConfirmationResult | null>(null);
   const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
+  const recaptchaContainerRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    return () => {
-      recaptchaRef.current?.clear();
-      recaptchaRef.current = null;
-    };
-  }, []);
+  const disposeRecaptcha = () => {
+    try { recaptchaRef.current?.clear(); } catch (error) { console.warn('reCAPTCHA clear skipped:', error); }
+    recaptchaRef.current = null;
+    recaptchaContainerRef.current?.remove();
+    recaptchaContainerRef.current = null;
+  };
+
+  useEffect(() => () => disposeRecaptcha(), []);
 
   if (!isOpen) return null;
 
@@ -102,8 +105,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setErrorMessage('');
     setSuccessMsg('');
     confirmationRef.current = null;
-    recaptchaRef.current?.clear();
-    recaptchaRef.current = null;
+    disposeRecaptcha();
   };
 
   const selectMode = (nextMode: AuthMode) => {
@@ -118,11 +120,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   };
 
   const buildRecaptcha = () => {
-    recaptchaRef.current?.clear();
-    const verifier = new RecaptchaVerifier(auth, 'wednak-recaptcha-container', {
+    disposeRecaptcha();
+    const container = document.createElement('div');
+    container.id = `wednak-recaptcha-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    container.style.position = 'fixed';
+    container.style.left = '-10000px';
+    container.style.top = '-10000px';
+    document.body.appendChild(container);
+    recaptchaContainerRef.current = container;
+    const verifier = new RecaptchaVerifier(auth, container, {
       size: 'invisible',
       callback: () => undefined,
-      'expired-callback': () => setErrorMessage('انتهت صلاحية التحقق الأمني. حاول إرسال الرمز مرة أخرى.'),
+      'expired-callback': () => { disposeRecaptcha(); setErrorMessage('انتهت صلاحية التحقق الأمني. حاول إرسال الرمز مرة أخرى.'); },
     });
     recaptchaRef.current = verifier;
     return verifier;
@@ -143,8 +152,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     } catch (error) {
       console.error('Firebase phone OTP send failed:', error);
       setErrorMessage(error instanceof Error ? error.message : 'تعذر إرسال رمز التحقق. حاول مرة أخرى.');
-      recaptchaRef.current?.clear();
-      recaptchaRef.current = null;
+      disposeRecaptcha();
     } finally {
       setIsLoading(false);
     }
