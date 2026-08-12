@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { User, ShieldAlert, Phone, Mail, MapPin, Building2, FileText, Lock, HelpCircle, Save, CheckCircle2, Image as ImageIcon } from 'lucide-react';
-import { UserProfile } from '../types';
+import { Hall, ServiceProvider, UserProfile } from '../types';
 import { CroppedImageInput } from './CroppedImageInput';
 import { uploadOwnerMedia } from '../lib/storage';
 
 interface ProfileViewProps {
   currentUser: UserProfile;
+  halls?: Hall[];
+  serviceProviders?: ServiceProvider[];
   onUpdateProfile: (updated: Partial<UserProfile>) => Promise<void> | void;
   onSelectTab: (tab: string) => void;
   onOpenPrivacyModal: () => void;
@@ -14,12 +16,16 @@ interface ProfileViewProps {
   onOpenAuthModal?: () => void;
 }
 
-export const ProfileView: React.FC<ProfileViewProps> = ({ currentUser, onUpdateProfile, onSelectTab, onOpenPrivacyModal, onOpenTermsModal, onOpenSupportModal, onOpenAuthModal }) => {
+export const ProfileView: React.FC<ProfileViewProps> = ({ currentUser, halls = [], serviceProviders = [], onUpdateProfile, onSelectTab, onOpenPrivacyModal, onOpenTermsModal, onOpenSupportModal, onOpenAuthModal }) => {
+  const ownedHall = halls.find((hall) => hall.ownerId === currentUser.id || (!!currentUser.ownedHallId && hall.id === currentUser.ownedHallId));
+  const ownedProvider = serviceProviders.find((provider) => provider.ownerId === currentUser.id || (!!currentUser.ownedProviderId && provider.id === currentUser.ownedProviderId));
+  const businessProfileImage = currentUser.accountType === 'صاحب قاعة' ? ownedHall?.profileImageUrl : currentUser.accountType === 'مزود خدمة' ? ownedProvider?.avatar : undefined;
+  const businessCoverImage = currentUser.accountType === 'صاحب قاعة' ? (ownedHall?.coverImage || ownedHall?.images?.[0]) : currentUser.accountType === 'مزود خدمة' ? ownedProvider?.coverImage : undefined;
   const [name, setName] = useState(currentUser.name || '');
   const [email, setEmail] = useState(currentUser.email || '');
   const [city, setCity] = useState(currentUser.city || 'بغداد');
-  const [profileImageUrl, setProfileImageUrl] = useState(currentUser.profileImageUrl || '');
-  const [coverImageUrl, setCoverImageUrl] = useState(currentUser.coverImageUrl || '');
+  const [profileImageUrl, setProfileImageUrl] = useState(businessProfileImage || currentUser.profileImageUrl || '');
+  const [coverImageUrl, setCoverImageUrl] = useState(businessCoverImage || currentUser.coverImageUrl || '');
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -34,8 +40,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ currentUser, onUpdateP
 
   useEffect(() => {
     setName(currentUser.name || ''); setEmail(currentUser.email || ''); setCity(currentUser.city || 'بغداد');
-    setProfileImageUrl(currentUser.profileImageUrl || ''); setCoverImageUrl(currentUser.coverImageUrl || '');
-  }, [currentUser.id, currentUser.name, currentUser.email, currentUser.city, currentUser.profileImageUrl, currentUser.coverImageUrl]);
+    setProfileImageUrl(businessProfileImage || currentUser.profileImageUrl || ''); setCoverImageUrl(businessCoverImage || currentUser.coverImageUrl || '');
+  }, [currentUser.id, currentUser.name, currentUser.email, currentUser.city, currentUser.profileImageUrl, currentUser.coverImageUrl, businessProfileImage, businessCoverImage]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault(); setError(''); setSaving(true);
@@ -54,7 +60,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ currentUser, onUpdateP
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6" id="profile-view-container">
       <div className="relative overflow-hidden rounded-3xl min-h-44 bg-gradient-to-r from-emerald-900 to-amber-900 text-white shadow-md">
-        {coverImageUrl && <img src={coverImageUrl} alt="الغلاف" className="absolute inset-0 w-full h-full object-cover opacity-45" onError={(e)=>{(e.currentTarget as HTMLImageElement).style.display='none';}}/>}
+        {coverImageUrl && <img src={coverImageUrl} alt="الغلاف" className="absolute inset-0 w-full h-full object-cover" onError={(e)=>{(e.currentTarget as HTMLImageElement).style.display='none';}}/>}
+        {coverImageUrl && <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/15 to-transparent"/>}
         <div className="relative p-6 flex items-end gap-4 min-h-44">
           <div className="w-20 h-20 rounded-2xl bg-amber-400 border-2 border-white overflow-hidden flex items-center justify-center text-black font-black text-2xl">
             {profileImageUrl ? <img src={profileImageUrl} alt={currentUser.name} className="w-full h-full object-cover" onError={(e)=>{(e.currentTarget as HTMLImageElement).style.display='none';}}/> : (currentUser.name.charAt(0) || 'U')}
