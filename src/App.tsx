@@ -63,13 +63,13 @@ function readLegacyBookings(): Booking[] {
   } catch { return []; }
 }
 function readLegacyUsers(): UserProfile[] {
-  const initial:Record<string,UserProfile>={'user-guest-101':{id:'user-guest-101',name:'علي الفتلاوي',phone:'07701122334',email:'ali.wedding@gmail.com',city:'بغداد',accountType:'زبون'},'owner-1':{id:'owner-1',name:'سيف مجيد - قاعة الملكة',phone:'07709988776',email:'',city:'بغداد',accountType:'صاحب قاعة'},'provider-user-1':{id:'provider-user-1',name:'أحمد المصور',phone:'07703344556',email:'',city:'بغداد',accountType:'مزود خدمة'}};
   try {
     const saved=JSON.parse(localStorage.getItem('wednak_firestore_users')||'{}');
     const profile=JSON.parse(localStorage.getItem('wednak_user_profile')||'null') as UserProfile|null;
     const records=Array.isArray(saved)?saved:Object.values(saved||{});
-    return [...Object.values(initial),...records,...(profile?.id?[profile]:[])];
-  } catch { return Object.values(initial); }
+    const fakeIds=new Set(['user-guest-101','owner-1','provider-user-1','admin-1']);
+    return [...records,...(profile?.id?[profile]:[])].filter((user:any)=>user?.id&&!fakeIds.has(user.id));
+  } catch { return []; }
 }
 function usersFromBookings(items:Booking[]):UserProfile[]{
   const map=new Map<string,UserProfile>();
@@ -245,7 +245,7 @@ export function App() {
   const filteredProviders = serviceProviders.filter((p) => selectedCity === 'جميع المحافظات' || p.city === selectedCity);
   const filteredPosts = posts.filter((p) => selectedCity === 'جميع المحافظات' || p.city === selectedCity);
   const visibleAdminBookings=mergeById(bookings,readLegacyBookings());
-  const visibleAdminUsers=mergeById(allUsers,mergeById(readLegacyUsers(),usersFromBookings(visibleAdminBookings)));
+  const visibleAdminUsers=mergeById(allUsers,mergeById(readLegacyUsers(),usersFromBookings(visibleAdminBookings))).filter(user=>!['user-guest-101','owner-1','provider-user-1','admin-1'].includes(user.id));
   const bookingsWithCurrentImages=bookings.map(b=>{if(b.itemType==='provider'){const p=serviceProviders.find(x=>x.id===b.itemId);return p?{...b,itemImage:p.avatar||p.coverImage||b.itemImage}:b;}const h=halls.find(x=>x.id===b.itemId);return h?{...b,itemImage:h.profileImageUrl||h.coverImage||h.images?.[0]||b.itemImage}:b;});
 
   const renderRoleSpecificView = () => {
