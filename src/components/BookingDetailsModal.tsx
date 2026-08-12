@@ -9,9 +9,10 @@ interface BookingDetailsModalProps {
   onCancelBooking: (bookingId: string) => void;
   currentUser: UserProfile;
   onUpdateStatus: (bookingId: string, status: BookingStatus) => Promise<void> | void;
+  onOpenRequester?: (userId:string)=>void;
 }
 
-export const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ booking, isOpen, onClose, onCancelBooking, currentUser, onUpdateStatus }) => {
+export const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ booking, isOpen, onClose, onCancelBooking, currentUser, onUpdateStatus, onOpenRequester }) => {
   if (!isOpen || !booking) return null;
 
   const getStatusBadge = (status: Booking['status']) => {
@@ -88,9 +89,10 @@ export const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ bookin
           </div>
 
           <div className="p-3 bg-gray-50 rounded-2xl border border-gray-200 space-y-1 text-xs">
-            <div className="flex justify-between text-gray-700"><span>صاحب الحجز:</span><strong className="text-gray-900">{booking.customerName}</strong></div>
+            <div className="flex justify-between text-gray-700"><span>صاحب الحجز:</span><button onClick={()=>booking.requesterId&&onOpenRequester?.(booking.requesterId)} className="font-bold text-emerald-800 underline">{booking.customerName}</button></div>
             <div className="flex justify-between text-gray-700"><span>رقم الهاتف:</span><strong className="text-emerald-800 text-left dir-ltr">{booking.customerPhone}</strong></div>
             {booking.notes && <div className="pt-2 border-t border-gray-200 text-gray-600"><span className="block text-[10px] font-bold text-gray-500">الملاحظات:</span><p className="text-xs bg-white p-2 rounded-lg border border-gray-200 mt-1">{booking.notes}</p></div>}
+            <div className="pt-2 border-t text-[11px]"><b>الدفع:</b> {booking.paymentStatus||'بانتظار الدفع'} • {booking.paymentMethod||'غير محدد'} {booking.paymentReference&&`• ${booking.paymentReference}`}</div>
           </div>
         </div>
 

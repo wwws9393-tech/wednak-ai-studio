@@ -4,6 +4,7 @@ import { ServiceProvider, Booking, UserProfile, FeedPost, ServiceCategory } from
 import { createBusinessOffer, saveOwnedServiceProvider } from '../lib/business';
 import { uploadOwnerMedia } from '../lib/storage';
 import { CroppedImageInput } from './CroppedImageInput';
+import { MediaViewer } from './MediaViewer';
 
 interface ServiceProviderHomeViewProps {
   currentUser: UserProfile;
@@ -47,6 +48,7 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [updatingBookingId, setUpdatingBookingId] = useState('');
+  const [viewingPortfolioUrl,setViewingPortfolioUrl]=useState('');
   const [postTitle, setPostTitle] = useState('');
   const [postCaption, setPostCaption] = useState('');
   const [postMediaUrl, setPostMediaUrl] = useState('');
@@ -67,6 +69,7 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
   const providerBookings = bookings.filter((booking) => booking.targetOwnerId === currentUser.id && booking.itemType === 'provider');
   const pendingBookings = providerBookings.filter((booking) => booking.status === 'قيد المراجعة' || booking.status === 'pending');
   const acceptedBookings = providerBookings.filter((booking) => booking.status === 'مقبول' || booking.status === 'accepted');
+  const pendingConflicts=(booking:Booking)=>pendingBookings.filter(other=>other.id!==booking.id&&other.date===booking.date&&(other.startTime||other.timeSlot)===(booking.startTime||booking.timeSlot)&&(other.endTime||'')===(booking.endTime||'')).length;
   const ownPosts = posts.filter((post) => post.authorId === currentUser.id);
   const setField = <K extends keyof ServiceProvider>(key: K, value: ServiceProvider[K]) => setDraft((prev) => ({ ...prev, [key]: value }));
 
@@ -78,7 +81,8 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
       if (kind === 'cover') setDraft((prev) => ({ ...prev, coverImage: url }));
       if (kind === 'avatar') setDraft((prev) => ({ ...prev, avatar: url }));
       if (kind === 'portfolio') {
-        setDraft((prev) => ({ ...prev, portfolio: [...(prev.portfolio || []), url] }));
+        const description=window.prompt('أضف وصفاً لهذا العمل (اختياري):','')||'';
+        setDraft((prev) => ({ ...prev, portfolio: [...(prev.portfolio || []), url], portfolioDescriptions:{...(prev.portfolioDescriptions||{}),[url]:description} }));
         setPortfolioDirty(true);
         setMessage('تم رفع الملف. اضغط «حفظ معرض الأعمال» لتثبيته في صفحتك.');
       }
@@ -199,14 +203,14 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
 
         <section className="bg-white p-5 rounded-3xl border border-gray-200 space-y-3">
           <h2 className="font-bold flex items-center gap-2"><Calendar className="w-5 h-5 text-emerald-700"/>الحجوزات الواردة ({providerBookings.length})</h2>
-          {providerBookings.length === 0 ? <div className="p-8 text-center text-xs text-gray-500 border border-dashed rounded-2xl">لا توجد حجوزات موجهة إلى خدمتك حالياً.</div> : providerBookings.map((booking)=><div key={booking.id} className="p-4 border rounded-2xl space-y-2"><div className="flex justify-between gap-2"><b className="text-xs">{booking.requesterName || booking.customerName}</b><span className={`text-[11px] font-bold ${booking.status === 'مقبول' ? 'text-emerald-700' : booking.status === 'مرفوض' ? 'text-rose-700' : 'text-amber-700'}`}>{booking.status}</span></div><div className="text-[11px] text-gray-600">{booking.date} • {booking.startTime || booking.timeSlot} {booking.endTime ? `- ${booking.endTime}` : ''}</div>{(booking.status === 'قيد المراجعة' || booking.status === 'pending') && <div className="flex gap-2"><button disabled={!!updatingBookingId} type="button" onClick={()=>void updateBooking(booking.id,'مقبول')} className="px-3 py-2 bg-emerald-100 disabled:opacity-50 text-emerald-800 rounded-xl text-xs font-bold"><CheckCircle2 className="inline w-4 h-4 ml-1"/>{updatingBookingId===booking.id?'جاري التنفيذ...':'قبول'}</button><button disabled={!!updatingBookingId} type="button" onClick={()=>void updateBooking(booking.id,'مرفوض')} className="px-3 py-2 bg-rose-100 disabled:opacity-50 text-rose-800 rounded-xl text-xs font-bold"><XCircle className="inline w-4 h-4 ml-1"/>رفض</button></div>}</div>)}
+          {providerBookings.length === 0 ? <div className="p-8 text-center text-xs text-gray-500 border border-dashed rounded-2xl">لا توجد حجوزات موجهة إلى خدمتك حالياً.</div> : providerBookings.map((booking)=><div key={booking.id} className="p-4 border rounded-2xl space-y-2"><div className="flex justify-between gap-2"><b className="text-xs">{booking.requesterName || booking.customerName}</b><span className={`text-[11px] font-bold ${booking.status === 'مقبول' ? 'text-emerald-700' : booking.status === 'مرفوض' ? 'text-rose-700' : 'text-amber-700'}`}>{booking.status}</span></div><div className="text-[11px] text-gray-600">{booking.date} • {booking.startTime || booking.timeSlot} {booking.endTime ? `- ${booking.endTime}` : ''}</div>{pendingConflicts(booking)>0&&(booking.status==='قيد المراجعة'||booking.status==='pending')&&<div className="p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-[11px] font-bold text-amber-900">⚠️ انتبه: يوجد {pendingConflicts(booking)} طلب آخر قيد المراجعة بنفس التاريخ والوقت.</div>}{(booking.status === 'قيد المراجعة' || booking.status === 'pending') && <div className="flex gap-2"><button disabled={!!updatingBookingId} type="button" onClick={()=>void updateBooking(booking.id,'مقبول')} className="px-3 py-2 bg-emerald-100 disabled:opacity-50 text-emerald-800 rounded-xl text-xs font-bold"><CheckCircle2 className="inline w-4 h-4 ml-1"/>{updatingBookingId===booking.id?'جاري التنفيذ...':'قبول'}</button><button disabled={!!updatingBookingId} type="button" onClick={()=>void updateBooking(booking.id,'مرفوض')} className="px-3 py-2 bg-rose-100 disabled:opacity-50 text-rose-800 rounded-xl text-xs font-bold"><XCircle className="inline w-4 h-4 ml-1"/>رفض</button></div>}</div>)}
         </section>
       </div>
 
       <section className="bg-white p-5 rounded-3xl border border-gray-200 space-y-3">
         <div className="flex items-center justify-between"><h2 className="font-bold flex gap-2"><Camera className="w-5 h-5 text-emerald-700"/>معرض الأعمال</h2><span className="text-[11px] text-gray-500">صور وفيديوهات تظهر للزبون داخل صفحتك</span></div>
         <label className="flex items-center justify-center gap-2 border border-dashed rounded-2xl p-4 text-xs font-bold cursor-pointer bg-gray-50"><Upload className="w-4 h-4"/>إضافة صورة أو فيديو من المعرض<input type="file" accept="image/*,video/*" className="hidden" onChange={(e)=>{const f=e.target.files?.[0]; if(f) void uploadSingle(f,'portfolio');}}/></label>
-        {(draft.portfolio || []).length > 0 ? <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">{(draft.portfolio || []).map((url,idx)=><div key={`${url}-${idx}`} className="relative rounded-2xl overflow-hidden bg-gray-100 aspect-square border">{isVideoUrl(url) ? <video src={url} controls className="w-full h-full object-cover"/> : <img src={url} alt={`عمل ${idx+1}`} className="w-full h-full object-cover"/>}<button type="button" onClick={()=>{setDraft((prev)=>({...prev,portfolio:prev.portfolio.filter((_,i)=>i!==idx)}));setPortfolioDirty(true);}} className="absolute top-2 left-2 p-1.5 rounded-full bg-black/60 text-white"><Trash2 className="w-3.5 h-3.5"/></button></div>)}</div> : <div className="text-xs text-gray-500 text-center p-5 border border-dashed rounded-2xl">لم تضف أعمالاً بعد.</div>}
+        {(draft.portfolio || []).length > 0 ? <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">{(draft.portfolio || []).map((url,idx)=><button type="button" onClick={()=>setViewingPortfolioUrl(url)} key={`${url}-${idx}`} className="text-right relative rounded-2xl overflow-hidden bg-gray-100 aspect-square border shadow-sm hover:shadow-lg">{isVideoUrl(url) ? <video src={url} muted className="w-full h-full object-cover"/> : <img src={url} alt={`عمل ${idx+1}`} className="w-full h-full object-cover"/>}<span className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] p-2 line-clamp-1">{draft.portfolioDescriptions?.[url]||'بدون وصف'}</span></button>)}</div> : <div className="text-xs text-gray-500 text-center p-5 border border-dashed rounded-2xl">لم تضف أعمالاً بعد.</div>}
         {persistedProvider && <button type="button" disabled={isSaving || isUploading} onClick={()=>void savePortfolio()} className="w-full sm:w-auto px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 disabled:bg-gray-400 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2"><Save className="w-4 h-4"/>{isUploading ? 'انتظر اكتمال الرفع...' : isSaving ? 'جاري الحفظ...' : portfolioDirty ? 'حفظ معرض الأعمال' : 'حفظ معرض الأعمال'}</button>}
       </section>
 
@@ -216,6 +220,7 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
       </div>
 
       {ownPosts.length > 0 && <section className="bg-white p-5 rounded-3xl border space-y-3"><h2 className="font-bold flex gap-2"><Sparkles className="w-5 h-5 text-amber-600"/>منشوراتي في Explore</h2><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{ownPosts.map((post)=><div key={post.id} className="border rounded-2xl overflow-hidden bg-gray-50"><div className="h-36 bg-gray-100">{post.mediaType === 'video' ? <video src={post.mediaUrl} controls className="w-full h-full object-cover"/> : <img src={post.mediaUrl} alt={post.title} className="w-full h-full object-cover"/>}</div><div className="p-3"><b className="text-xs block">{post.title}</b><p className="text-[11px] text-gray-500 line-clamp-2 mt-1">{post.caption}</p>{onDeletePost && <button type="button" onClick={()=>{if(window.confirm('حذف هذا المنشور من Explore؟')) void onDeletePost(post.id);}} className="mt-2 text-xs font-bold text-rose-700 flex items-center gap-1"><Trash2 className="w-3.5 h-3.5"/>حذف المنشور</button>}</div></div>)}</div></section>}
+      {viewingPortfolioUrl&&<MediaViewer url={viewingPortfolioUrl} type={isVideoUrl(viewingPortfolioUrl)?'video':'image'} description={draft.portfolioDescriptions?.[viewingPortfolioUrl]} onClose={()=>setViewingPortfolioUrl('')} onDelete={()=>{setDraft(prev=>({...prev,portfolio:prev.portfolio.filter(x=>x!==viewingPortfolioUrl)}));setPortfolioDirty(true);setViewingPortfolioUrl('');setMessage('تم حذف العمل؛ اضغط حفظ معرض الأعمال لتثبيت الحذف.');}}/>}
     </div>
   );
 };

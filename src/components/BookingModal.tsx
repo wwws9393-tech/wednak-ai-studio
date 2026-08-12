@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Calendar, Clock, Users, Phone, User, FileText, CheckCircle, AlertTriangle, Sparkles, ShieldCheck, AlertCircle, KeyRound, ArrowRight } from 'lucide-react';
+import { X, Calendar, Clock, Users, Phone, User, FileText, CheckCircle, AlertTriangle, Sparkles, ShieldCheck, AlertCircle, KeyRound, ArrowRight, CreditCard, WalletCards } from 'lucide-react';
 import { ConfirmationResult, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 import { Hall, ServiceProvider, UserProfile, Booking } from '../types';
 import { auth, fetchUserFromFirestore, saveUserToFirestore, subscribeAvailability } from '../lib/firebase';
@@ -15,7 +15,7 @@ interface BookingModalProps {
     itemType: 'hall' | 'provider'; itemId: string; itemName: string; itemLocation: string; itemImage: string;
     date: string; timeSlot: string; startTime?: string; endTime?: string; guests?: number;
     totalPrice: number; depositAmount: number; notes: string; customerName: string; customerPhone: string;
-    customerId: string; ownerId?: string; requesterAccountType?: string;
+    customerId: string; ownerId?: string; requesterAccountType?: string; paymentStatus?: Booking['paymentStatus']; paymentMethod?: Booking['paymentMethod']; paymentReference?: string;
   }) => Promise<void> | void;
 }
 
@@ -77,7 +77,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
   const [customerPhone, setCustomerPhone] = useState('');
   const [notes, setNotes] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
-  const [guestStep, setGuestStep] = useState<'details' | 'otp_form'>('details');
+  const [guestStep, setGuestStep] = useState<'details' | 'otp_form' | 'payment'>('details');
+  const [bookingUser,setBookingUser]=useState<UserProfile|null>(null);
+  const [paymentMethod,setPaymentMethod]=useState<Booking['paymentMethod']>('زين كاش');
   const [otpCode, setOtpCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [busyMinutes, setBusyMinutes] = useState<number[]>([]);
@@ -142,11 +144,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
     if (selectedBooked) throw new Error('هذا الموعد محجوز. اختر فترة أو تاريخاً آخر.');
     await onSubmitBooking({
       itemType: item.type, itemId: item.data.id, itemName: item.data.name, itemLocation: item.data.location,
-      itemImage: isHall ? (hall!.coverImage || hall!.images[0] || '') : (provider!.coverImage || ''),
+      itemImage: isHall ? (hall!.coverImage || hall!.images[0] || '') : (provider!.avatar || provider!.coverImage || ''),
       date: bookingDate, timeSlot, startTime, endTime,
       guests: isHall ? effectiveGuests : undefined, totalPrice, depositAmount, notes: notes.trim(),
       customerName: user.name || customerName.trim(), customerPhone: user.phone || customerPhone,
       customerId: user.id, ownerId: targetOwnerId, requesterAccountType: user.accountType,
+      paymentStatus: 'بانتظار الدفع', paymentMethod, paymentReference:`PAY-${Date.now().toString().slice(-8)}`,
     });
   };
 
@@ -176,7 +179,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
     setIsLoading(true);
     try {
       if (currentUser.isGuest) await sendGuestOtp();
-      else { await submitBooking(currentUser); onClose(); }
+      else { setBookingUser(currentUser); setGuestStep('payment'); }
     } catch (err: any) { console.error('Booking failed:', err); const code = err?.code || ''; const msg = code === 'auth/operation-not-allowed' ? 'تسجيل الدخول برقم الهاتف غير مفعّل في Firebase. فعّل Phone provider من Firebase Authentication.' : code === 'auth/invalid-app-credential' || code === 'auth/captcha-check-failed' ? 'فشل تحقق reCAPTCHA. تأكد أن localhost مضاف إلى Authorized domains في Firebase Authentication.' : code === 'auth/too-many-requests' ? 'تم إرسال محاولات كثيرة. انتظر قليلاً ثم حاول مجدداً.' : code === 'auth/invalid-phone-number' ? 'رقم الهاتف غير صحيح. اكتب 11 رقماً عراقياً يبدأ بـ 07.' : (err instanceof Error ? err.message : 'تعذر تنفيذ الحجز.'); setErrorMsg(msg); }
     finally { setIsLoading(false); }
   };
@@ -194,8 +197,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
         profile = await saveUserToFirestore({ id: credential.user.uid, name: customerName.trim(), phone: customerPhone, email: '', city: currentUser.city || 'بغداد', accountType: 'زبون', isGuest: false, isGuestConverted: true, profileCompleted: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
       }
       onLoginSuccess?.(profile);
-      await submitBooking(profile);
-      onClose();
+      setBookingUser(profile); setGuestStep('payment');
     } catch (err) { console.error('OTP/booking failed:', err); setErrorMsg(err instanceof Error ? err.message : 'تعذر التحقق أو إنشاء الحجز.'); }
     finally { setIsLoading(false); }
   };
@@ -246,8 +248,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
           <div className="grid sm:grid-cols-2 gap-3"><div><label className="text-xs font-bold"><User className="inline w-4 h-4"/> الاسم</label><input value={customerName} onChange={(e)=>setCustomerName(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs" required/></div><div><label className="text-xs font-bold"><Phone className="inline w-4 h-4"/> الهاتف</label><input type="tel" inputMode="numeric" maxLength={11} value={customerPhone} onChange={(e)=>setCustomerPhone(toEnglishDigits(e.target.value).replace(/\D/g, '').slice(0, 11))} placeholder="07701234567" className="w-full px-3 py-2 border rounded-xl text-xs dir-ltr" required/></div></div>
           <div><label className="text-xs font-bold"><FileText className="inline w-4 h-4"/> ملاحظات</label><textarea value={notes} onChange={(e)=>setNotes(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs h-16"/></div>
           <div className="p-2.5 bg-gray-50 border rounded-xl text-[11px] text-gray-600 flex gap-2"><ShieldCheck className="w-4 h-4 text-emerald-600"/>{currentUser.isGuest?'سنرسل OTP حقيقي ونربط الحجز بهويتك.':'الحجز خاص بك وبالطرف المستلم فقط.'}</div>
-          <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className="px-4 py-2 text-xs">إلغاء</button><button disabled={isLoading||isSelfBooking||selectedBooked||availabilityLoading} className="px-5 py-2 bg-emerald-700 disabled:bg-gray-400 text-white rounded-xl text-xs font-bold flex gap-1"><CheckCircle className="w-4 h-4"/>{isLoading?'جاري التنفيذ...':currentUser.isGuest?'إرسال OTP':'إرسال الحجز'}</button></div>
-        </form> : <form onSubmit={verifyGuestOtp} className="p-5 space-y-4"><div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs"><KeyRound className="inline w-4 h-4"/> أدخل الرمز الحقيقي المرسل إلى {customerPhone}</div><input value={otpCode} onChange={(e)=>setOtpCode(e.target.value)} inputMode="numeric" maxLength={6} className="w-full px-3 py-2 border rounded-xl text-center text-xl tracking-widest" placeholder="000000"/><div className="flex justify-between"><button type="button" onClick={()=>setGuestStep('details')} className="text-xs flex gap-1"><ArrowRight className="w-4 h-4"/>تغيير الرقم</button><button disabled={isLoading} className="px-5 py-2 bg-emerald-800 text-white rounded-xl text-xs font-bold">{isLoading?'جاري التحقق...':'تأكيد الحجز'}</button></div></form>}
+          <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className="px-4 py-2 text-xs">إلغاء</button><button disabled={isLoading||isSelfBooking||selectedBooked||availabilityLoading} className="px-5 py-2 bg-emerald-700 disabled:bg-gray-400 text-white rounded-xl text-xs font-bold flex gap-1"><WalletCards className="w-4 h-4"/>{isLoading?'جاري التنفيذ...':currentUser.isGuest?'إرسال OTP':'دفع العربون'}</button></div>
+        </form> : guestStep==='otp_form' ? <form onSubmit={verifyGuestOtp} className="p-5 space-y-4"><div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs"><KeyRound className="inline w-4 h-4"/> أدخل الرمز الحقيقي المرسل إلى {customerPhone}</div><input value={otpCode} onChange={(e)=>setOtpCode(e.target.value)} inputMode="numeric" maxLength={6} className="w-full px-3 py-2 border rounded-xl text-center text-xl tracking-widest" placeholder="000000"/><div className="flex justify-between"><button type="button" onClick={()=>setGuestStep('details')} className="text-xs flex gap-1"><ArrowRight className="w-4 h-4"/>تغيير الرقم</button><button disabled={isLoading} className="px-5 py-2 bg-emerald-800 text-white rounded-xl text-xs font-bold">{isLoading?'جاري التحقق...':'الانتقال للدفع'}</button></div></form> : <div className="p-5 space-y-4"><div className="text-center"><WalletCards className="w-10 h-10 mx-auto text-emerald-700"/><h3 className="font-black mt-2">دفع العربون</h3><p className="text-2xl font-black text-amber-700">{depositAmount.toLocaleString()} د.ع</p></div><div className="grid grid-cols-2 gap-3">{(['زين كاش','Qi Card'] as const).map(method=><button key={method} onClick={()=>setPaymentMethod(method)} className={`p-4 border-2 rounded-2xl font-bold text-sm ${paymentMethod===method?'border-emerald-700 bg-emerald-50':'border-gray-200'}`}><CreditCard className="w-5 h-5 mx-auto mb-2"/>{method}</button>)}</div><div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900">سيُسجل الطلب بانتظار الدفع إلى أن يتم ربط حساب التاجر الرسمي ببوابة {paymentMethod}. لن نعتبر العربون مدفوعاً دون تأكيد حقيقي من بوابة الدفع.</div><button disabled={isLoading||!bookingUser} onClick={async()=>{if(!bookingUser)return;setIsLoading(true);try{await submitBooking(bookingUser);onClose()}catch(err){setErrorMsg(err instanceof Error?err.message:'تعذر إرسال الحجز')}finally{setIsLoading(false)}}} className="w-full py-3 bg-emerald-700 text-white rounded-xl font-bold text-xs">{isLoading?'جاري إرسال الطلب...':`اختيار ${paymentMethod} وإرسال الطلب`}</button></div>}
       </div>
     </div>
   );

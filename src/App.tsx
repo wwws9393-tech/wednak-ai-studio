@@ -20,6 +20,7 @@ import { ServiceProviderHomeView } from './components/ServiceProviderHomeView';
 import { AdminHomeView } from './components/AdminHomeView';
 import { AuthModal } from './components/AuthModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { UserProfileModal } from './components/UserProfileModal';
 
 import { Hall, ServiceProvider, FeedPost, Booking, Complaint, AppNotification, UserProfile, BookingStatus } from './types';
 import { GUEST_ANONYMOUS_USER } from './data/usersDatabase';
@@ -43,6 +44,10 @@ import {
   subscribePosts,
   createPostInFirestore,
   deletePostInFirestore,
+  subscribeAllUsers,
+  setUserBlockedInFirestore,
+  fetchPublicUserProfile,
+  subscribeUserProfile,
 } from './lib/firebase';
 import { cancelBookingWithActorInFirestore } from './lib/bookingCancellation';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -66,6 +71,8 @@ export function App() {
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+  const [selectedUserProfile, setSelectedUserProfile] = useState<UserProfile|null>(null);
 
   useEffect(() => {
     seedInitialDataIfEmpty();
@@ -74,6 +81,12 @@ export function App() {
     const unsubPosts = subscribePosts(setPosts);
     return () => { unsubHalls(); unsubProviders(); unsubPosts(); };
   }, []);
+
+  useEffect(()=>{
+    if(currentUser.accountType!=='مدير'&&currentUser.accountType!=='مدير Admin'){setAllUsers([]);return;}
+    return subscribeAllUsers(setAllUsers);
+  },[currentUser.id,currentUser.accountType]);
+  useEffect(()=>{if(!currentUser.id||currentUser.isGuest)return;return subscribeUserProfile(currentUser.id,setCurrentUser)},[currentUser.id,currentUser.isGuest]);
 
   useEffect(() => {
     let unsubBookings: () => void = () => {};
@@ -209,6 +222,7 @@ export function App() {
   const filteredHalls = halls.filter((h) => selectedCity === 'جميع المحافظات' || h.city === selectedCity);
   const filteredProviders = serviceProviders.filter((p) => selectedCity === 'جميع المحافظات' || p.city === selectedCity);
   const filteredPosts = posts.filter((p) => selectedCity === 'جميع المحافظات' || p.city === selectedCity);
+  const bookingsWithCurrentImages=bookings.map(b=>{if(b.itemType==='provider'){const p=serviceProviders.find(x=>x.id===b.itemId);return p?{...b,itemImage:p.avatar||p.coverImage||b.itemImage}:b;}const h=halls.find(x=>x.id===b.itemId);return h?{...b,itemImage:h.profileImageUrl||h.coverImage||h.images?.[0]||b.itemImage}:b;});
 
   const renderRoleSpecificView = () => {
     if (currentUser.accountType === 'صاحب قاعة' && currentTab === 'home') {
@@ -218,7 +232,7 @@ export function App() {
       return <ServiceProviderHomeView currentUser={currentUser} serviceProviders={serviceProviders} bookings={bookings} posts={posts} onUpdateServiceProvider={() => {}} onUpdateBookingStatus={handleUpdateBookingStatus} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} />;
     }
     if (currentUser.accountType === 'مدير Admin' || currentUser.accountType === 'مدير') {
-      return <AdminHomeView currentUser={currentUser} complaints={complaints} bookings={bookings} halls={halls} providers={serviceProviders} onUpdateComplaintStatus={handleUpdateComplaintStatus} onUpdateBookingStatus={handleUpdateBookingStatus} />;
+      return <AdminHomeView currentUser={currentUser} users={allUsers} complaints={complaints} bookings={bookings} halls={halls} providers={serviceProviders} onOpenUser={setSelectedUserProfile} onOpenHall={setSelectedHallForModal} onOpenProvider={setSelectedProviderForModal} onUpdateComplaintStatus={handleUpdateComplaintStatus} onUpdateBookingStatus={handleUpdateBookingStatus} />;
     }
 
     switch (currentTab) {
@@ -230,7 +244,7 @@ export function App() {
         </div>;
       case 'search': return <SearchView halls={halls} serviceProviders={serviceProviders} selectedCity={selectedCity} onSelectCity={setSelectedCity} cities={CITIES} favoriteIds={favoriteIds} onToggleFavorite={handleToggleFavorite} onSelectHall={setSelectedHallForModal} onBookHall={(h)=>setBookingItemForModal({type:'hall',data:h})} onSelectProvider={setSelectedProviderForModal} onBookProvider={(sp)=>setBookingItemForModal({type:'provider',data:sp})} currentUser={currentUser}/>;
       case 'explore': return <ExploreView posts={filteredPosts} halls={halls} serviceProviders={serviceProviders} likedPostIds={likedPostIds} favoriteIds={favoriteIds} onTogglePostLike={handleTogglePostLike} onToggleFavorite={handleToggleFavorite} onSelectHall={setSelectedHallForModal} onBookHall={(h)=>setBookingItemForModal({type:'hall',data:h})} onSelectProvider={setSelectedProviderForModal} onBookProvider={(sp)=>setBookingItemForModal({type:'provider',data:sp})} selectedCity={selectedCity} onSelectCity={setSelectedCity} cities={CITIES} currentUser={currentUser}/>;
-      case 'bookings': return <BookingsView bookings={bookings} onSelectBooking={setSelectedBookingForDetails} onSelectTab={setCurrentTab}/>;
+      case 'bookings': return <BookingsView bookings={bookingsWithCurrentImages} onSelectBooking={setSelectedBookingForDetails} onSelectTab={setCurrentTab}/>;
       case 'favorites': return <FavoritesView favoriteIds={favoriteIds} halls={halls} serviceProviders={serviceProviders} onToggleFavorite={handleToggleFavorite} onSelectHall={setSelectedHallForModal} onBookHall={(h)=>setBookingItemForModal({type:'hall',data:h})} onSelectProvider={setSelectedProviderForModal} onBookProvider={(sp)=>setBookingItemForModal({type:'provider',data:sp})} onSelectTab={setCurrentTab}/>;
       case 'notifications': return <NotificationsView notifications={notifications} onMarkAsRead={markNotificationRead} onMarkAllAsRead={markAllNotificationsRead} onOpenNotificationTarget={(n)=>{ if(n.targetBookingId){ const booking=bookings.find((b)=>b.id===n.targetBookingId); if(booking){setSelectedBookingForDetails(booking); return;} } if(n.type==='booking') setCurrentTab('bookings'); else if(n.type==='offer') setCurrentTab('explore'); }}/>;
       case 'complaints': return <ComplaintsView complaints={complaints} currentUser={currentUser} onSubmitComplaint={handleCreateComplaint} isAdmin={false} onUpdateComplaintStatus={handleUpdateComplaintStatus}/>;
@@ -240,6 +254,7 @@ export function App() {
   };
 
   if (isLoadingAuth) return <div className="min-h-screen flex items-center justify-center text-emerald-800 font-bold">جاري تحميل ويدنك...</div>;
+  if (currentUser.isBlocked) return <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4" dir="rtl"><div className="max-w-md bg-white rounded-3xl p-8 text-center shadow-2xl"><h1 className="text-2xl font-black text-rose-700">حسابك موقوف</h1><p className="text-sm text-gray-600 mt-3">تم منع هذا الحساب من استخدام ويدنك. السبب: {currentUser.blockReason||'مخالفة شروط الاستخدام'}.</p><button onClick={handleLogout} className="mt-5 px-5 py-3 bg-gray-900 text-white rounded-xl text-xs font-bold">تسجيل الخروج</button></div></div>;
 
   return <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-['Cairo',sans-serif] dir-rtl pb-24">
     <Header currentTab={currentTab} onSelectTab={setCurrentTab} selectedCity={selectedCity} onSelectCity={setSelectedCity} cities={CITIES} favoritesCount={favoriteIds.length} unreadNotificationsCount={notifications.filter((n)=>!n.read).length} currentAccountType={currentUser.accountType} onOpenAuthModal={()=>setIsAuthModalOpen(true)}/>
@@ -249,9 +264,10 @@ export function App() {
     <HallDetailsModal hall={selectedHallForModal} isOpen={!!selectedHallForModal} onClose={()=>setSelectedHallForModal(null)} isFavorite={selectedHallForModal?favoriteIds.includes(selectedHallForModal.id):false} onToggleFavorite={()=>selectedHallForModal&&handleToggleFavorite(selectedHallForModal.id,'hall')} currentUser={currentUser} bookings={bookings} posts={posts.filter((p)=>selectedHallForModal&&p.targetType==='hall'&&p.targetId===selectedHallForModal.id)} onBookHall={(hall)=>{setSelectedHallForModal(null);setBookingItemForModal({type:'hall',data:hall});}}/>
     <ServiceProviderDetailsModal provider={selectedProviderForModal} isOpen={!!selectedProviderForModal} onClose={()=>setSelectedProviderForModal(null)} isFavorite={selectedProviderForModal?favoriteIds.includes(selectedProviderForModal.id):false} onToggleFavorite={()=>selectedProviderForModal&&handleToggleFavorite(selectedProviderForModal.id,'provider')} currentUser={currentUser} bookings={bookings} posts={posts.filter((p)=>selectedProviderForModal&&p.targetType==='provider'&&p.targetId===selectedProviderForModal.id)} onBookProvider={(provider)=>{setSelectedProviderForModal(null);setBookingItemForModal({type:'provider',data:provider});}}/>
     <BookingModal item={bookingItemForModal} isOpen={!!bookingItemForModal} onClose={()=>setBookingItemForModal(null)} currentUser={currentUser} bookings={bookings} onLoginSuccess={handleLoginSuccess} onSubmitBooking={handleCreateBooking}/>
-    <BookingDetailsModal booking={selectedBookingForDetails} isOpen={!!selectedBookingForDetails} onClose={()=>setSelectedBookingForDetails(null)} onCancelBooking={handleCancelBooking} currentUser={currentUser} onUpdateStatus={handleUpdateBookingStatus}/>
+    <BookingDetailsModal booking={selectedBookingForDetails} isOpen={!!selectedBookingForDetails} onClose={()=>setSelectedBookingForDetails(null)} onCancelBooking={handleCancelBooking} currentUser={currentUser} onUpdateStatus={handleUpdateBookingStatus} onOpenRequester={async(id)=>{const u=await fetchPublicUserProfile(id);if(u){setSelectedBookingForDetails(null);setSelectedUserProfile(u);}}}/>
     <AuthModal isOpen={isAuthModalOpen} onClose={()=>setIsAuthModalOpen(false)} currentUser={currentUser} onLoginSuccess={handleLoginSuccess} onLogout={handleLogout}/>
     <LegalSupportModals activeModal={activeLegalModal} onClose={()=>setActiveLegalModal(null)}/>
+    <UserProfileModal user={selectedUserProfile} bookings={bookings} isAdmin={currentUser.accountType==='مدير'||currentUser.accountType==='مدير Admin'} onClose={()=>setSelectedUserProfile(null)} onBlock={async(u,blocked)=>{await setUserBlockedInFirestore(u.id,blocked,currentUser);setSelectedUserProfile({...u,isBlocked:blocked});}} onOpenBusiness={(u)=>{setSelectedUserProfile(null);if(u.accountType==='صاحب قاعة'){const h=halls.find(x=>x.ownerId===u.id);if(h)setSelectedHallForModal(h);}else if(u.accountType==='مزود خدمة'){const p=serviceProviders.find(x=>x.ownerId===u.id);if(p)setSelectedProviderForModal(p);}}}/>
   </div>;
 }
 

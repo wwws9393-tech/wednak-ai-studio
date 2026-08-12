@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Star, MapPin, Users, Sparkles, CheckCircle, Heart, ArrowLeft, Shield, Calendar, Clock, Check, AlertCircle, ShieldCheck, ExternalLink, Play } from 'lucide-react';
 import { Hall, UserProfile, Booking, FeedPost } from '../types';
 import { subscribeAvailability } from '../lib/firebase';
+import { MediaViewer } from './MediaViewer';
 
 interface HallDetailsModalProps {
   hall: Hall | null;
@@ -30,6 +31,7 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [busyMinutes, setBusyMinutes] = useState<number[]>([]);
+  const [viewingPost,setViewingPost]=useState<FeedPost|null>(null);
   const modalScrollRef = useRef<HTMLDivElement | null>(null);
 
   const galleryImages = useMemo(() => {
@@ -118,7 +120,7 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
 
           <div><h3 className="text-sm font-bold text-gray-900 mb-1">عن القاعة:</h3><p className="text-xs text-gray-600 leading-relaxed bg-gray-50 p-3 rounded-2xl border border-gray-100">{hall.description || 'لا يوجد وصف مضاف بعد.'}</p></div>
 
-          {hallPosts.length > 0 && <div><h3 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2"><Sparkles className="w-4 h-4 text-amber-500"/>معرض أعمال القاعة ({hallPosts.length})</h3><div className="grid grid-cols-2 sm:grid-cols-3 gap-3">{hallPosts.map((post)=><div key={post.id} className="rounded-2xl overflow-hidden border bg-gray-100 aspect-square relative group">{post.mediaType === 'video' ? <video src={post.mediaUrl} controls preload="metadata" className="w-full h-full object-cover"/> : <img src={post.mediaUrl} alt={post.title} className="w-full h-full object-cover"/>}<div className="absolute bottom-0 inset-x-0 bg-black/55 text-white p-2 text-[10px] line-clamp-1">{post.title}</div></div>)}</div></div>}
+          {hallPosts.length > 0 && <div><h3 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2"><Sparkles className="w-4 h-4 text-amber-500"/>معرض أعمال القاعة ({hallPosts.length})</h3><div className="grid grid-cols-2 sm:grid-cols-3 gap-3">{hallPosts.map(post=><button onClick={()=>setViewingPost(post)} key={post.id} className="text-right rounded-2xl overflow-hidden border bg-gray-100 shadow-sm hover:shadow-lg transition"><div className="aspect-square relative">{post.mediaType==='video'?<video src={post.mediaUrl} muted preload="metadata" className="w-full h-full object-cover"/>:<img src={post.mediaUrl} alt={post.title} className="w-full h-full object-cover"/>}<div className="absolute bottom-0 inset-x-0 bg-black/65 text-white p-2"><b className="text-[11px] block">{post.title}</b><span className="text-[9px] line-clamp-1">{post.caption||'بدون وصف'}</span></div></div></button>)}</div></div>}
 
           {Array.isArray(hall.features) && hall.features.length > 0 && <div><h3 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-1.5"><Sparkles className="w-4 h-4 text-amber-500" />المميزات المشمولة في الحجز:</h3><div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{hall.features.map((feature, idx) => <div key={idx} className="flex items-center gap-2 bg-emerald-50/40 p-2.5 rounded-xl border border-emerald-100/60 text-xs text-emerald-900 font-semibold"><CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" /><span>{feature}</span></div>)}</div></div>}
 
@@ -131,7 +133,7 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
         </div>
 
         <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4 flex items-center justify-between gap-4 rounded-b-3xl" dir="rtl"><div><span className="text-[10px] text-gray-500 block">الإجمالي بالدينار العراقي:</span><span className="text-lg font-black text-emerald-900">{priceText}</span></div>{!isSelfHall ? <button onClick={() => { onClose(); onBookHall(hall); }} className="px-5 sm:px-6 py-3 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm rounded-2xl shadow-md flex items-center gap-2 shrink-0" id="modal-direct-book-hall-btn"><Calendar className="w-4 h-4" /><span>تأكيد موعد الحجز</span><ArrowLeft className="w-4 h-4" /></button> : <div className="px-4 py-2 bg-amber-50 border border-amber-200 rounded-2xl text-xs font-bold text-amber-800 flex items-center gap-1.5"><ShieldCheck className="w-4 h-4 text-amber-600" /><span>هذه قاعتك الخاصة</span></div>}</div>
-      </div>
+      </div>{viewingPost&&<MediaViewer url={viewingPost.mediaUrl} type={viewingPost.mediaType} title={viewingPost.title} description={viewingPost.caption} onClose={()=>setViewingPost(null)}/>}
     </div>
   );
 };

@@ -39,6 +39,7 @@ export interface ServiceProvider {
   avatar: string;
   coverImage: string;
   portfolio: string[];
+  portfolioDescriptions?: Record<string,string>;
   description: string;
   phone: string;
   isVerified?: boolean;
@@ -101,6 +102,11 @@ export interface Booking {
   cancelledByRole?: 'زبون' | 'صاحب قاعة' | 'مزود خدمة' | 'مدير';
   cancelledByName?: string;
   cancelledAt?: string;
+  cancellationReason?: string;
+  paymentStatus?: 'بانتظار الدفع' | 'مدفوع تجريبياً' | 'مدفوع' | 'فشل' | 'مسترجع';
+  paymentMethod?: 'زين كاش' | 'Qi Card' | 'الدفع لاحقاً';
+  paymentReference?: string;
+  paidAt?: string;
 }
 
 export interface Complaint {
@@ -146,4 +152,8 @@ export interface UserProfile {
   coverImageUrl?: string;
   createdAt?: string;
   updatedAt?: string;
+  isBlocked?: boolean;
+  blockedAt?: string;
+  blockedBy?: string;
+  blockReason?: string;
 }

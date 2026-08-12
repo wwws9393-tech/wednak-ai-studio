@@ -36,17 +36,11 @@ service cloud.firestore {
     }
 
     function immutableBookingIdentity() {
-      return request.resource.data.requesterId == resource.data.requesterId
-        && request.resource.data.customerId == resource.data.customerId
-        && request.resource.data.targetOwnerId == resource.data.targetOwnerId
-        && request.resource.data.ownerId == resource.data.ownerId
-        && request.resource.data.itemId == resource.data.itemId
-        && request.resource.data.itemType == resource.data.itemType
-        && request.resource.data.hallId == resource.data.hallId
-        && request.resource.data.serviceProviderId == resource.data.serviceProviderId
-        && request.resource.data.date == resource.data.date
-        && request.resource.data.startTime == resource.data.startTime
-        && request.resource.data.endTime == resource.data.endTime;
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'status', 'updatedAt', 'cancelledAt', 'cancelledById', 'cancelledByRole',
+        'cancelledByName', 'cancellationReason', 'paymentStatus', 'paymentMethod',
+        'paymentReference', 'paidAt'
+      ]);
     }
 
     function requesterCanTransition() {
@@ -67,13 +61,14 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isSelf(userId) || isAdmin();
+      allow read: if signedIn();
       allow create: if isSelf(userId)
         && request.resource.data.id == userId
         && validUserRole(request.resource.data.accountType);
-      allow update: if isSelf(userId)
+      allow update: if isAdmin() || (isSelf(userId)
         && request.resource.data.id == userId
-        && request.resource.data.accountType == resource.data.accountType;
+        && request.resource.data.accountType == resource.data.accountType
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isBlocked','blockedAt','blockedBy','blockReason']));
       allow delete: if isSelf(userId) || isAdmin();
 
       match /favorites/{favoriteId} {
@@ -108,7 +103,7 @@ service cloud.firestore {
     match /bookingLocks/{lockId} {
       allow read: if true;
       allow create: if signedIn()
-        && request.resource.data.targetOwnerId == request.auth.uid
+        && (request.resource.data.targetOwnerId == request.auth.uid || isAdmin())
         && request.resource.data.keys().hasOnly([
           'bookingId', 'itemId', 'date', 'minute', 'targetOwnerId', 'createdAt'
         ]);

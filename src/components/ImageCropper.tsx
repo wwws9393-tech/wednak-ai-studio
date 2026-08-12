@@ -50,17 +50,17 @@ export const ImageCropper: React.FC<ImageCropperProps> = ({ file, aspect = 1, ti
   }, 'image/jpeg', 0.9);
 
   return <div className="fixed inset-0 z-[80] bg-black/70 backdrop-blur-sm flex items-center justify-center p-3" dir="rtl">
-    <div className="w-full max-w-xl bg-white rounded-3xl shadow-2xl overflow-hidden">
-      <div className="p-4 flex items-center justify-between border-b"><h2 className="font-black flex items-center gap-2"><Crop className="w-5 h-5 text-emerald-700"/>{title}</h2><button type="button" onClick={onCancel} className="p-2 rounded-full bg-gray-100"><X className="w-4 h-4"/></button></div>
-      <div className="p-4 space-y-4">
-        <div className="rounded-2xl overflow-hidden bg-gray-950 border-2 border-emerald-600"><canvas ref={canvasRef} className="w-full block"/></div>
-        <div className="space-y-3 text-xs font-bold">
+    <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden max-h-[94vh] overflow-y-auto">
+      <div className="p-3 flex items-center justify-between border-b"><h2 className="text-sm font-black flex items-center gap-2"><Crop className="w-4 h-4 text-emerald-700"/>{title}</h2><button type="button" onClick={onCancel} className="p-1.5 rounded-full bg-gray-100"><X className="w-4 h-4"/></button></div>
+      <div className="p-3 space-y-3">
+        <div className="rounded-xl overflow-hidden bg-gray-950 border-2 border-emerald-600"><canvas ref={canvasRef} className="w-full max-h-[48vh] object-contain block"/></div>
+        <div className="space-y-2 text-[11px] font-bold">
           <label className="flex items-center gap-2"><Minus className="w-4 h-4"/><input aria-label="تكبير الصورة" type="range" min="1" max="3" step="0.05" value={zoom} onChange={(e)=>setZoom(Number(e.target.value))} className="flex-1 accent-emerald-700"/><Plus className="w-4 h-4"/></label>
           <label>تحريك أفقي<input aria-label="تحريك أفقي" type="range" min="-100" max="100" value={offsetX} onChange={(e)=>setOffsetX(Number(e.target.value))} className="w-full accent-emerald-700"/></label>
           <label>تحريك عمودي<input aria-label="تحريك عمودي" type="range" min="-100" max="100" value={offsetY} onChange={(e)=>setOffsetY(Number(e.target.value))} className="w-full accent-emerald-700"/></label>
         </div>
       </div>
-      <div className="p-4 border-t flex gap-2"><button type="button" onClick={confirm} className="flex-1 py-3 bg-emerald-700 text-white rounded-xl text-xs font-bold">اعتماد ورفع الصورة</button><button type="button" onClick={onCancel} className="px-5 py-3 bg-gray-100 rounded-xl text-xs font-bold">إلغاء</button></div>
+      <div className="p-3 border-t flex gap-2"><button type="button" onClick={confirm} className="flex-1 py-2.5 bg-emerald-700 text-white rounded-xl text-xs font-bold">اعتماد ورفع الصورة</button><button type="button" onClick={onCancel} className="px-4 py-2.5 bg-gray-100 rounded-xl text-xs font-bold">إلغاء</button></div>
     </div>
   </div>;
 };

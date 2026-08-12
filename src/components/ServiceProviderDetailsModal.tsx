@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { X, Star, MapPin, Phone, Heart, CheckCircle2, Camera, Calendar, Shield, Clock, Check, AlertCircle, ShieldCheck, Sparkles } from 'lucide-react';
 import { ServiceProvider, UserProfile, Booking, FeedPost } from '../types';
 import { subscribeAvailability } from '../lib/firebase';
+import { MediaViewer } from './MediaViewer';
 
 interface ServiceProviderDetailsModalProps {
   provider: ServiceProvider | null;
@@ -29,6 +30,7 @@ export const ServiceProviderDetailsModal: React.FC<ServiceProviderDetailsModalPr
 }) => {
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [busyMinutes, setBusyMinutes] = useState<number[]>([]);
+  const [viewing,setViewing]=useState<{url:string,type:'image'|'video',title?:string,description?:string}|null>(null);
 
   useEffect(() => {
     const itemId = provider?.id;
@@ -85,7 +87,7 @@ export const ServiceProviderDetailsModal: React.FC<ServiceProviderDetailsModalPr
 
           <div><h3 className="text-sm font-bold text-gray-900 mb-1">تفاصيل الخدمة:</h3><p className="text-xs text-gray-600 leading-relaxed bg-gray-50 p-3 rounded-2xl border border-gray-100">{provider.description || 'لم يضف مزود الخدمة وصفاً بعد.'}</p></div>
 
-          {(portfolio.length > 0 || providerPosts.length > 0) && <div><h3 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-1.5"><Camera className="w-4 h-4 text-emerald-600" />معرض الأعمال ({portfolio.length + providerPosts.length})</h3><div className="grid grid-cols-2 sm:grid-cols-3 gap-3">{portfolio.map((url, idx) => <div key={`portfolio-${idx}`} className="aspect-square rounded-xl overflow-hidden border border-gray-200 bg-gray-100">{isVideoUrl(url) ? <video src={url} controls preload="metadata" className="w-full h-full object-cover" /> : <img src={url} alt={`عمل ${idx + 1}`} className="w-full h-full object-cover" />}</div>)}{providerPosts.map((post) => <div key={post.id} className="aspect-square rounded-xl overflow-hidden border border-gray-200 bg-gray-100 relative">{post.mediaType === 'video' ? <video src={post.mediaUrl} controls preload="metadata" className="w-full h-full object-cover" /> : <img src={post.mediaUrl} alt={post.title} className="w-full h-full object-cover" />}<div className="absolute bottom-0 inset-x-0 p-2 bg-black/55 text-white text-[10px] line-clamp-1">{post.title}</div></div>)}</div></div>}
+          {(portfolio.length > 0 || providerPosts.length > 0) && <div><h3 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-1.5"><Camera className="w-4 h-4 text-emerald-600" />معرض الأعمال ({portfolio.length + providerPosts.length})</h3><div className="grid grid-cols-2 sm:grid-cols-3 gap-3">{portfolio.map((url, idx) => <button onClick={()=>setViewing({url,type:isVideoUrl(url)?'video':'image',description:provider.portfolioDescriptions?.[url]})} key={`portfolio-${idx}`} className="text-right aspect-square rounded-xl overflow-hidden border bg-gray-100 relative">{isVideoUrl(url) ? <video src={url} muted className="w-full h-full object-cover" /> : <img src={url} alt={`عمل ${idx + 1}`} className="w-full h-full object-cover" />}<span className="absolute bottom-0 inset-x-0 bg-black/60 text-white p-2 text-[10px]">{provider.portfolioDescriptions?.[url]||'بدون وصف'}</span></button>)}{providerPosts.map(post => <button onClick={()=>setViewing({url:post.mediaUrl,type:post.mediaType,title:post.title,description:post.caption})} key={post.id} className="text-right aspect-square rounded-xl overflow-hidden border bg-gray-100 relative">{post.mediaType === 'video' ? <video src={post.mediaUrl} muted className="w-full h-full object-cover" /> : <img src={post.mediaUrl} alt={post.title} className="w-full h-full object-cover" />}<div className="absolute bottom-0 inset-x-0 p-2 bg-black/60 text-white text-[10px] line-clamp-1">{post.title}</div></button>)}</div></div>}
 
           <div className="bg-gradient-to-br from-amber-50/60 via-white to-emerald-50/60 p-4 rounded-3xl border border-amber-200/80 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-100 pb-3"><div><h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5"><Calendar className="w-4 h-4 text-emerald-700" />جدول مواعيد الخدمة والتوفر لـ ({provider.name})</h3><p className="text-[11px] text-gray-500">اختر التاريخ للتحقق من الأوقات المتاحة للحجز المؤكد</p></div><input type="date" value={selectedCalendarDate} onChange={(e) => setSelectedCalendarDate(e.target.value)} min={new Date().toISOString().split('T')[0]} className="px-3 py-1.5 bg-white rounded-xl border border-gray-300 text-xs font-bold text-gray-800" id="provider-calendar-date-picker" /></div>
@@ -96,7 +98,7 @@ export const ServiceProviderDetailsModal: React.FC<ServiceProviderDetailsModalPr
         </div>
 
         <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4 flex items-center justify-between rounded-b-3xl" dir="rtl"><div><span className="text-[10px] text-gray-500 block">السعر الأساسي:</span><span className="text-base font-black text-emerald-900">{priceText}</span></div>{!isSelfProvider ? <button onClick={() => { onClose(); onBookProvider(provider); }} className="px-6 py-3 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm rounded-2xl shadow-md flex items-center gap-2" id="modal-direct-book-provider-btn"><Calendar className="w-4 h-4" /><span>إرسال طلب حجز</span></button> : <div className="px-4 py-2 bg-amber-50 border border-amber-200 rounded-2xl text-xs font-bold text-amber-800 flex items-center gap-1.5"><ShieldCheck className="w-4 h-4 text-amber-600" /><span>هذه خدمتك الخاصة</span></div>}</div>
-      </div>
+      </div>{viewing&&<MediaViewer {...viewing} onClose={()=>setViewing(null)}/>}
     </div>
   );
 };

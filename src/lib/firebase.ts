@@ -109,6 +109,12 @@ export async function fetchUserFromFirestore(uid: string): Promise<UserProfile |
     return null;
   }
 }
+export async function fetchPublicUserProfile(uid:string):Promise<UserProfile|null>{
+  await requireFirebaseUser(); const snap=await getDoc(doc(db,'users',uid)); return snap.exists()?({...(snap.data() as UserProfile),id:snap.id}):null;
+}
+export function subscribeUserProfile(uid:string,callback:(user:UserProfile)=>void){
+  return onSnapshot(doc(db,'users',uid),snap=>{if(snap.exists())callback({...snap.data(),id:snap.id} as UserProfile)},err=>console.error('User profile listener failed:',err));
+}
 
 export async function findUserByPhoneFromFirestore(phone: string): Promise<UserProfile | null> {
   const user = await ensureFirebaseAuth();
@@ -168,6 +174,20 @@ export function subscribeBookings(uid: string, accountType: AccountType, callbac
   }, (err) => { console.error('Bookings listener failed:', err); callback([]); });
 }
 
+export function subscribeAllUsers(callback: (users: UserProfile[]) => void) {
+  return onSnapshot(collection(db, 'users'), (snap) => {
+    const users = snap.docs.map((d)=>({ ...d.data(), id:d.id } as UserProfile));
+    users.sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+    callback(users);
+  }, (err)=>{ console.error('Users listener failed:',err); callback([]); });
+}
+
+export async function setUserBlockedInFirestore(userId:string, blocked:boolean, admin:UserProfile, reason='مخالفة شروط استخدام ويدنك') {
+  const user=await requireFirebaseUser();
+  if (admin.id!==user.uid || !['مدير','مدير Admin'].includes(admin.accountType)) throw new Error('هذه الصلاحية للمدير فقط.');
+  await updateDoc(doc(db,'users',userId), blocked ? {isBlocked:true,blockedAt:new Date().toISOString(),blockedBy:user.uid,blockReason:reason,updatedAt:new Date().toISOString()} : {isBlocked:false,blockedAt:null,blockedBy:null,blockReason:null,updatedAt:new Date().toISOString()});
+}
+
 export function subscribeAvailability(itemId: string, date: string, callback: (busyMinutes: number[]) => void) {
   if (!itemId || !date) { callback([]); return () => {}; }
   const q = query(collection(db, 'bookingLocks'), where('itemId', '==', itemId), where('date', '==', date));
@@ -180,7 +200,7 @@ export async function createBookingInFirestore(bookingData: {
   itemType: 'hall' | 'provider'; itemId: string; itemName: string; itemLocation: string; itemImage: string;
   date: string; timeSlot: string; startTime?: string; endTime?: string; guests?: number;
   totalPrice: number; depositAmount: number; notes: string; customerName: string; customerPhone: string;
-  customerId: string; ownerId?: string; requesterAccountType?: string;
+  customerId: string; ownerId?: string; requesterAccountType?: string; paymentStatus?: Booking['paymentStatus']; paymentMethod?: Booking['paymentMethod']; paymentReference?: string;
 }): Promise<Booking> {
   const user = await requireFirebaseUser();
   if (bookingData.customerId && bookingData.customerId !== user.uid) throw new Error('هوية صاحب الحجز غير متطابقة.');
@@ -228,6 +248,9 @@ export async function createBookingInFirestore(bookingData: {
     targetType: bookingData.itemType,
     hallId: bookingData.itemType === 'hall' ? bookingData.itemId : null,
     serviceProviderId: bookingData.itemType === 'provider' ? bookingData.itemId : null,
+    paymentStatus: bookingData.paymentStatus || 'بانتظار الدفع',
+    paymentMethod: bookingData.paymentMethod || 'الدفع لاحقاً',
+    paymentReference: bookingData.paymentReference || '',
   };
   const firestoreSafeBooking = removeUndefinedDeep(booking);
   try { await setDoc(ref, firestoreSafeBooking); return booking; }
@@ -242,7 +265,10 @@ export async function acceptBookingInFirestore(bookingId: string): Promise<void>
       const snap = await tx.get(bookingRef);
       if (!snap.exists()) throw new Error('الحجز غير موجود.');
       const booking = snap.data() as Booking;
-      if (booking.targetOwnerId !== user.uid) throw new Error('ليس لديك صلاحية قبول هذا الحجز.');
+      const userSnap=await tx.get(doc(db,'users',user.uid));
+      const role=userSnap.exists()?(userSnap.data() as UserProfile).accountType:'';
+      const admin=role==='مدير'||role==='مدير Admin';
+      if (booking.targetOwnerId !== user.uid && !admin) throw new Error('ليس لديك صلاحية قبول هذا الحجز.');
       if (booking.status !== 'قيد المراجعة' && booking.status !== 'pending') throw new Error('تم تغيير حالة الحجز سابقاً.');
       const range = getSlotTimeRange(booking.timeSlot, booking.startTime, booking.endTime);
       const segments = lockSegments(booking.itemId, booking.date, range.startMins, range.endMins);
@@ -254,7 +280,7 @@ export async function acceptBookingInFirestore(bookingId: string): Promise<void>
         itemId: booking.itemId,
         date: booking.date,
         minute: segment.minute,
-        targetOwnerId: user.uid,
+        targetOwnerId: booking.targetOwnerId,
         createdAt: new Date().toISOString(),
       }));
       tx.update(bookingRef, { status: 'مقبول', updatedAt: new Date().toISOString() });
@@ -270,7 +296,9 @@ export async function rejectBookingInFirestore(bookingId: string): Promise<void>
       const snap = await tx.get(bookingRef);
       if (!snap.exists()) throw new Error('الحجز غير موجود.');
       const booking = snap.data() as Booking;
-      if (booking.targetOwnerId !== user.uid) throw new Error('ليس لديك صلاحية رفض هذا الحجز.');
+      const userSnap=await tx.get(doc(db,'users',user.uid));
+      const role=userSnap.exists()?(userSnap.data() as UserProfile).accountType:'';
+      if (booking.targetOwnerId !== user.uid && role!=='مدير' && role!=='مدير Admin') throw new Error('ليس لديك صلاحية رفض هذا الحجز.');
       if (booking.status !== 'قيد المراجعة' && booking.status !== 'pending') throw new Error('تم تغيير حالة الحجز سابقاً.');
       tx.update(bookingRef, { status: 'مرفوض', updatedAt: new Date().toISOString() });
     });

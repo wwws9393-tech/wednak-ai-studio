@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Building2, Calendar, CheckCircle2, XCircle, Clock, Sparkles, Save, AlertCircle, Tag, Image as ImageIcon, Upload, Trash2 } from 'lucide-react';
 import { Hall, Booking, UserProfile, FeedPost } from '../types';
 import { createBusinessOffer, saveOwnedHall } from '../lib/business';
-import { uploadOwnerImage } from '../lib/storage';
+import { uploadOwnerImage, uploadOwnerMedia } from '../lib/storage';
+import { MediaViewer } from './MediaViewer';
 import { CroppedImageInput } from './CroppedImageInput';
 
 interface OwnerHomeViewProps {
@@ -41,6 +42,8 @@ export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({ currentUser, halls
   const [postTitle, setPostTitle] = useState('');
   const [postCaption, setPostCaption] = useState('');
   const [postMediaUrl, setPostMediaUrl] = useState('');
+  const [postMediaType,setPostMediaType]=useState<'image'|'video'>('image');
+  const [viewingPost,setViewingPost]=useState<FeedPost|null>(null);
   const [offerTitle, setOfferTitle] = useState('');
   const [offerDescription, setOfferDescription] = useState('');
   const [offerPrice, setOfferPrice] = useState(0);
@@ -52,16 +55,17 @@ export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({ currentUser, halls
   const hallBookings = bookings.filter((booking) => booking.targetOwnerId === currentUser.id && booking.itemType === 'hall');
   const pendingBookings = hallBookings.filter((booking) => booking.status === 'قيد المراجعة' || booking.status === 'pending');
   const acceptedBookings = hallBookings.filter((booking) => booking.status === 'مقبول' || booking.status === 'accepted');
+  const pendingConflicts=(booking:Booking)=>pendingBookings.filter(other=>other.id!==booking.id&&other.date===booking.date&&(other.startTime||other.timeSlot)===(booking.startTime||booking.timeSlot)&&(other.endTime||'')===(booking.endTime||'')).length;
   const ownPosts = posts.filter((post) => post.authorId === currentUser.id);
   const setField = <K extends keyof Hall>(key: K, value: Hall[K]) => setDraft((prev) => ({ ...prev, [key]: value }));
 
   const uploadImage = async (file: File, kind: 'cover' | 'profile' | 'post') => {
     setError(''); setIsUploading(true);
     try {
-      const url = await uploadOwnerImage(file, kind === 'cover' ? 'hall-cover' : kind === 'profile' ? 'hall-profile' : 'post-media');
+      const url = kind==='post' ? await uploadOwnerMedia(file,'post-media') : await uploadOwnerImage(file, kind === 'cover' ? 'hall-cover' : 'hall-profile');
       if (kind === 'cover') setDraft((prev) => ({ ...prev, coverImage: url, images: [url, ...(prev.images || []).filter((v) => v !== url)] }));
       if (kind === 'profile') setDraft((prev) => ({ ...prev, profileImageUrl: url }));
-      if (kind === 'post') setPostMediaUrl(url);
+      if (kind === 'post') {setPostMediaUrl(url);setPostMediaType(file.type.startsWith('video/')?'video':'image');}
     } catch (err) { setError(err instanceof Error ? err.message : 'تعذر رفع الصورة.'); }
     finally { setIsUploading(false); }
   };
@@ -90,10 +94,10 @@ export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({ currentUser, halls
     event.preventDefault(); setError('');
     const hall = persistedHall || (draft.id ? draft : null);
     if (!hall) return setError('احفظ صفحة القاعة أولاً قبل النشر.');
-    if (!postTitle.trim() || !postCaption.trim()) return setError('عنوان المنشور والوصف مطلوبان.');
+    if (!postTitle.trim()) return setError('عنوان العمل مطلوب، أما الوصف فاختياري.');
     if (!postMediaUrl && !hall.coverImage) return setError('اختر صورة للمنشور.');
     try {
-      await onCreatePost({ authorId: currentUser.id, authorName: hall.name, authorAvatar: hall.profileImageUrl || hall.coverImage || '', authorRole: 'صاحب قاعة', targetType: 'hall', targetId: hall.id, title: postTitle.trim(), caption: postCaption.trim(), mediaType: 'image', mediaUrl: postMediaUrl || hall.coverImage || '', city: hall.city });
+      await onCreatePost({ authorId: currentUser.id, authorName: hall.name, authorAvatar: hall.profileImageUrl || hall.coverImage || '', authorRole: 'صاحب قاعة', targetType: 'hall', targetId: hall.id, title: postTitle.trim(), caption: postCaption.trim(), mediaType: postMediaType, mediaUrl: postMediaUrl || hall.coverImage || '', city: hall.city });
       setPostTitle(''); setPostCaption(''); setPostMediaUrl(''); setMessage('تم نشر المحتوى في Explore.');
     } catch (err) { setError(err instanceof Error ? err.message : 'تعذر النشر.'); }
   };
@@ -130,15 +134,16 @@ export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({ currentUser, halls
           </form>}
         </section>
 
-        <section className="bg-white p-5 rounded-3xl border border-gray-200 space-y-3"><h2 className="font-bold flex items-center gap-2"><Calendar className="w-5 h-5 text-emerald-700"/>الحجوزات الواردة ({hallBookings.length})</h2>{hallBookings.length===0 ? <div className="p-8 text-center text-xs text-gray-500 border border-dashed rounded-2xl">لا توجد حجوزات موجهة إلى قاعتك حالياً.</div> : hallBookings.map((booking)=><div key={booking.id} className="p-4 border rounded-2xl space-y-2"><div className="flex justify-between gap-2"><b className="text-xs">{booking.requesterName||booking.customerName}</b><span className={`text-[11px] font-bold ${booking.status==='مقبول'?'text-emerald-700':booking.status==='مرفوض'?'text-rose-700':'text-amber-700'}`}>{booking.status}</span></div><div className="text-[11px] text-gray-600">{booking.date} • {booking.startTime||booking.timeSlot} {booking.endTime?`- ${booking.endTime}`:''}</div>{(booking.status==='قيد المراجعة'||booking.status==='pending')&&<div className="flex gap-2"><button type="button" onClick={()=>void updateBooking(booking.id,'مقبول')} className="px-3 py-2 bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold"><CheckCircle2 className="inline w-4 h-4 ml-1"/>قبول</button><button type="button" onClick={()=>void updateBooking(booking.id,'مرفوض')} className="px-3 py-2 bg-rose-100 text-rose-800 rounded-xl text-xs font-bold"><XCircle className="inline w-4 h-4 ml-1"/>رفض</button></div>}</div>)}</section>
+        <section className="bg-white p-5 rounded-3xl border border-gray-200 space-y-3"><h2 className="font-bold flex items-center gap-2"><Calendar className="w-5 h-5 text-emerald-700"/>الحجوزات الواردة ({hallBookings.length})</h2>{hallBookings.length===0 ? <div className="p-8 text-center text-xs text-gray-500 border border-dashed rounded-2xl">لا توجد حجوزات موجهة إلى قاعتك حالياً.</div> : hallBookings.map((booking)=><div key={booking.id} className="p-4 border rounded-2xl space-y-2"><div className="flex justify-between gap-2"><b className="text-xs">{booking.requesterName||booking.customerName}</b><span className={`text-[11px] font-bold ${booking.status==='مقبول'?'text-emerald-700':booking.status==='مرفوض'?'text-rose-700':'text-amber-700'}`}>{booking.status}</span></div><div className="text-[11px] text-gray-600">{booking.date} • {booking.startTime||booking.timeSlot} {booking.endTime?`- ${booking.endTime}`:''}</div>{pendingConflicts(booking)>0&&(booking.status==='قيد المراجعة'||booking.status==='pending')&&<div className="p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-[11px] font-bold text-amber-900">⚠️ يوجد {pendingConflicts(booking)} طلب آخر بنفس التاريخ والوقت.</div>}{(booking.status==='قيد المراجعة'||booking.status==='pending')&&<div className="flex gap-2"><button type="button" onClick={()=>void updateBooking(booking.id,'مقبول')} className="px-3 py-2 bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold"><CheckCircle2 className="inline w-4 h-4 ml-1"/>قبول</button><button type="button" onClick={()=>void updateBooking(booking.id,'مرفوض')} className="px-3 py-2 bg-rose-100 text-rose-800 rounded-xl text-xs font-bold"><XCircle className="inline w-4 h-4 ml-1"/>رفض</button></div>}</div>)}</section>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <form onSubmit={publishPost} className="bg-white p-5 rounded-3xl border space-y-3"><h2 className="font-bold flex gap-2"><Sparkles className="w-5 h-5 text-amber-600"/>نشر في Explore</h2><div><FieldLabel>عنوان المنشور</FieldLabel><input value={postTitle} onChange={(e)=>setPostTitle(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs"/></div><div><FieldLabel>الوصف</FieldLabel><textarea value={postCaption} onChange={(e)=>setPostCaption(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs"/></div><div><FieldLabel>صورة المنشور</FieldLabel><label className="flex items-center justify-center gap-2 border border-dashed rounded-xl p-3 text-xs font-bold cursor-pointer bg-gray-50"><Upload className="w-4 h-4"/>{postMediaUrl?'تغيير الصورة':'اختيار صورة من المعرض'}<input type="file" accept="image/*" className="hidden" onChange={(e)=>{const f=e.target.files?.[0]; if(f) void uploadImage(f,'post');}}/></label>{postMediaUrl&&<img src={postMediaUrl} alt="المنشور" className="mt-2 h-28 w-full object-cover rounded-xl"/>}</div><button disabled={isUploading} className="px-4 py-2 bg-amber-600 disabled:bg-gray-400 text-white rounded-xl text-xs font-bold">نشر</button></form>
+        <form onSubmit={publishPost} className="bg-white p-5 rounded-3xl border space-y-3"><h2 className="font-bold flex gap-2"><Sparkles className="w-5 h-5 text-amber-600"/>معرض الأعمال ومنشورات Explore</h2><div><FieldLabel>عنوان العمل</FieldLabel><input value={postTitle} onChange={(e)=>setPostTitle(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs"/></div><div><FieldLabel>الوصف (اختياري)</FieldLabel><textarea value={postCaption} onChange={(e)=>setPostCaption(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs"/></div><div><FieldLabel>صورة أو فيديو</FieldLabel><label className="flex items-center justify-center gap-2 border border-dashed rounded-xl p-3 text-xs font-bold cursor-pointer bg-gray-50"><Upload className="w-4 h-4"/>{postMediaUrl?'تغيير الملف':'اختيار صورة أو فيديو'}<input type="file" accept="image/*,video/*" className="hidden" onChange={(e)=>{const f=e.target.files?.[0]; if(f) void uploadImage(f,'post');}}/></label>{postMediaUrl&&(postMediaType==='video'?<video src={postMediaUrl} controls className="mt-2 h-28 w-full object-cover rounded-xl"/>:<img src={postMediaUrl} alt="العمل" className="mt-2 h-28 w-full object-cover rounded-xl"/>)}</div><button disabled={isUploading} className="px-4 py-2 bg-amber-600 disabled:bg-gray-400 text-white rounded-xl text-xs font-bold">إضافة وحفظ ونشر</button></form>
         <form onSubmit={publishOffer} className="bg-white p-5 rounded-3xl border space-y-3"><h2 className="font-bold flex gap-2"><Tag className="w-5 h-5 text-emerald-700"/>إنشاء عرض</h2><div><FieldLabel>عنوان العرض</FieldLabel><input value={offerTitle} onChange={(e)=>setOfferTitle(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs" required/></div><div><FieldLabel>تفاصيل العرض</FieldLabel><textarea value={offerDescription} onChange={(e)=>setOfferDescription(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs"/></div><div className="grid grid-cols-1 sm:grid-cols-3 gap-2"><div><FieldLabel>سعر العرض (د.ع)</FieldLabel><input type="number" min="0" value={offerPrice||''} onChange={(e)=>setOfferPrice(Number(e.target.value))} className="w-full px-2 py-2 border rounded-xl text-xs" required/></div><div><FieldLabel>بداية العرض</FieldLabel><input type="date" value={offerStart} onChange={(e)=>setOfferStart(e.target.value)} className="w-full px-2 py-2 border rounded-xl text-xs" required/></div><div><FieldLabel>نهاية العرض</FieldLabel><input type="date" value={offerEnd} onChange={(e)=>setOfferEnd(e.target.value)} className="w-full px-2 py-2 border rounded-xl text-xs" required/></div></div><button className="px-4 py-2 bg-emerald-700 text-white rounded-xl text-xs font-bold">حفظ العرض</button></form>
       </div>
 
-      {ownPosts.length > 0 && <section className="bg-white p-5 rounded-3xl border space-y-3"><h2 className="font-bold">منشوراتي في Explore</h2><div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">{ownPosts.map((post)=><div key={post.id} className="border rounded-2xl overflow-hidden"><div className="h-36 bg-gray-100">{post.mediaType==='video'?<video src={post.mediaUrl} controls className="w-full h-full object-cover"/>:<img src={post.mediaUrl} className="w-full h-full object-cover" alt={post.title}/>}</div><div className="p-3"><b className="text-xs block">{post.title}</b><p className="text-[11px] text-gray-500 line-clamp-2">{post.caption}</p>{onDeletePost&&<button type="button" onClick={()=>{if(window.confirm('حذف هذا المنشور من Explore؟')) void onDeletePost(post.id);}} className="mt-2 px-3 py-1.5 bg-rose-50 text-rose-700 rounded-xl text-xs font-bold flex items-center gap-1"><Trash2 className="w-3.5 h-3.5"/>حذف المنشور</button>}</div></div>)}</div></section>}
+      {ownPosts.length > 0 && <section className="bg-white p-5 rounded-3xl border space-y-3"><h2 className="font-bold">معرض أعمالي ({ownPosts.length})</h2><div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">{ownPosts.map(post=><button key={post.id} onClick={()=>setViewingPost(post)} className="border rounded-2xl overflow-hidden text-right hover:shadow-lg transition"><div className="h-40 bg-gray-100">{post.mediaType==='video'?<video src={post.mediaUrl} muted className="w-full h-full object-cover"/>:<img src={post.mediaUrl} className="w-full h-full object-cover"/>}</div><div className="p-3"><b className="text-xs">{post.title}</b><p className="text-[11px] text-gray-500 line-clamp-2">{post.caption||'بدون وصف'}</p></div></button>)}</div></section>}
+      {viewingPost&&<MediaViewer url={viewingPost.mediaUrl} type={viewingPost.mediaType} title={viewingPost.title} description={viewingPost.caption} onClose={()=>setViewingPost(null)} onDelete={onDeletePost?async()=>{await onDeletePost(viewingPost.id);setViewingPost(null);setMessage('تم حذف العمل بنجاح.');}:undefined}/>}
     </div>
   );
 };

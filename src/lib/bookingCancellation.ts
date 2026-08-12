@@ -21,7 +21,8 @@ export async function cancelBookingWithActorInFirestore(bookingId: string, actor
     const snap = await tx.get(bookingRef);
     if (!snap.exists()) throw new Error('الحجز غير موجود.');
     const booking = snap.data() as Booking;
-    if (booking.requesterId !== firebaseUser.uid && booking.targetOwnerId !== firebaseUser.uid) {
+    const isAdmin=actor.accountType==='مدير'||actor.accountType==='مدير Admin';
+    if (booking.requesterId !== firebaseUser.uid && booking.targetOwnerId !== firebaseUser.uid && !isAdmin) {
       throw new Error('ليس لديك صلاحية إلغاء هذا الحجز.');
     }
     if (booking.status === 'ملغي' || booking.status === 'cancelled') return;
