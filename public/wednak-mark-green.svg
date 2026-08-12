@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none" role="img" aria-label="شعار ويدنك">
+  <g stroke="#006B52" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m55 12 9-8 9 8-9 9-9-9Zm9-8v17m-9-9h18" stroke-width="3.8"/>
+    <path d="M52 31c-7-11-21-14-31-5-9 8-10 21-4 31l31 52c4 7 12 11 16 11s12-4 16-11l31-52c6-10 5-23-4-31-10-9-24-6-31 5L64 51 52 31Z" stroke-width="8"/>
+    <path d="m27 43 27 47c3 5 7 8 10 8s7-3 10-8l27-47M42 38l22 39 22-39M42 38l-10 18m54-18 10 18" stroke-width="7"/>
+  </g>
+</svg>
