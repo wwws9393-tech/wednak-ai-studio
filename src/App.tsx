@@ -539,7 +539,7 @@ export function App() {
         selectedCity={selectedCity}
         onSelectCity={setSelectedCity}
         cities={CITIES}
-        favoritesCount={favoriteIds.length}
+        favoritesCount={favoriteHalls.length + favoriteProviders.length}
         unreadNotificationsCount={notifications.filter((n) => !n.read).length}
         currentAccountType={currentUser.accountType}
         onChangeAccountType={handleChangeAccountType}
@@ -560,7 +560,7 @@ export function App() {
         accountType={currentUser.accountType}
         unreadNotificationsCount={notifications.filter((n) => !n.read).length}
         bookingsCount={bookings.length}
-        favoritesCount={favoriteIds.length}
+        favoritesCount={favoriteHalls.length + favoriteProviders.length}
       />
 
       {/* Modals */}
