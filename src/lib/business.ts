@@ -12,7 +12,7 @@ export async function saveOwnedHall(hall: Hall): Promise<Hall> {
   const uid = await requireUid();
   if (hall.ownerId && hall.ownerId !== uid) throw new Error('لا يمكنك تعديل قاعة لا تملكها.');
 
-  const hallRef = hall.id ? doc(db, 'halls', hall.id) : doc(collection(db, 'halls'));
+  const hallRef = hall.id ? doc(db, 'halls', hall.id) : doc(db, 'halls', uid);
   const normalized: Hall = {
     ...hall,
     id: hallRef.id,
@@ -33,7 +33,7 @@ export async function saveOwnedServiceProvider(provider: ServiceProvider): Promi
   const uid = await requireUid();
   if (provider.ownerId && provider.ownerId !== uid) throw new Error('لا يمكنك تعديل صفحة خدمة لا تملكها.');
 
-  const providerRef = provider.id ? doc(db, 'serviceProviders', provider.id) : doc(collection(db, 'serviceProviders'));
+  const providerRef = provider.id ? doc(db, 'serviceProviders', provider.id) : doc(db, 'serviceProviders', uid);
   const normalized: ServiceProvider = {
     ...provider,
     id: providerRef.id,
@@ -62,6 +62,7 @@ export async function createBusinessOffer(input: BusinessOfferInput): Promise<st
   const uid = await requireUid();
   if (!input.title.trim()) throw new Error('عنوان العرض مطلوب.');
   if (!input.targetId) throw new Error('الصفحة المرتبطة بالعرض غير موجودة.');
+  if (!input.startDate || !input.endDate) throw new Error('حدد تاريخ بداية العرض ونهايته.');
   if (input.offerPrice < 0 || input.originalPrice < 0) throw new Error('السعر غير صحيح.');
   if (input.endDate < input.startDate) throw new Error('تاريخ نهاية العرض يجب أن يكون بعد تاريخ البداية.');
 
