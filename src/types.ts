@@ -23,7 +23,7 @@ export interface Hall {
   isFeatured?: boolean;
 }
 
-export type ServiceCategory = 'تصوير وفيديو' | 'تزيين وكوشة' | 'فرقة وسنترال' | 'سيارات زفاف' | 'صالون ومكياج عرائس' | 'ضيافة وبوفيه';
+export type ServiceCategory = 'تصوير وفيديو' | 'تزيين وكوشة' | 'فرقة وسنترال' | 'دي جي وموسيقى' | 'زهور وباقات عرائس' | 'سيارات زفاف' | 'صالون ومكياج عرائس' | 'ضيافة وبوفيه';
 
 export interface ServiceProvider {
   id: string;
