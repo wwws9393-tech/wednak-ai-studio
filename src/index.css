@@ -1,1 +1,17 @@
 @import "tailwindcss";
+
+.wednak-logo-stage { perspective: 560px; filter: drop-shadow(0 7px 5px rgb(0 0 0 / .2)); }
+.wednak-logo-3d {
+  transform-style: preserve-3d;
+  animation: wednak-logo-spin 5.5s cubic-bezier(.45,.05,.55,.95) infinite;
+  filter: drop-shadow(1px 0 0 rgb(255 255 255 / .75)) drop-shadow(4px 4px 2px rgb(0 32 25 / .24));
+  will-change: transform;
+}
+@keyframes wednak-logo-spin {
+  0% { transform: rotateX(-7deg) rotateY(0deg) translateZ(0); }
+  25% { transform: rotateX(5deg) rotateY(90deg) translateZ(5px); }
+  50% { transform: rotateX(-4deg) rotateY(180deg) translateZ(0); }
+  75% { transform: rotateX(6deg) rotateY(270deg) translateZ(5px); }
+  100% { transform: rotateX(-7deg) rotateY(360deg) translateZ(0); }
+}
+@media (prefers-reduced-motion: reduce) { .wednak-logo-3d { animation: none; transform: rotateX(-5deg) rotateY(-8deg); } }
