@@ -54,6 +54,7 @@ export const ServiceProviderDetailsModal: React.FC<ServiceProviderDetailsModalPr
   const isSelfProvider = currentUser && (currentUser.id === provider.ownerId || currentUser.ownedProviderId === provider.id);
   const providerPosts = posts.filter((post) => post.targetType === 'provider' && post.targetId === provider.id);
   const portfolio = Array.isArray(provider.portfolio) ? provider.portfolio : [];
+  const allMedia=[...portfolio.map(url=>({url,type:isVideoUrl(url)?'video' as const:'image' as const,description:provider.portfolioDescriptions?.[url]})),...providerPosts.map(post=>({url:post.mediaUrl,type:post.mediaType,title:post.title,description:post.caption}))];
   const safePrice = Number.isFinite(Number(provider.priceStart)) ? Number(provider.priceStart) : 0;
   const priceText = `${safePrice.toLocaleString('en-US')} د.ع`;
   const safeRating = Number.isFinite(Number(provider.rating)) ? Number(provider.rating) : 0;
@@ -98,7 +99,7 @@ export const ServiceProviderDetailsModal: React.FC<ServiceProviderDetailsModalPr
         </div>
 
         <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4 flex items-center justify-between rounded-b-3xl" dir="rtl"><div><span className="text-[10px] text-gray-500 block">السعر الأساسي:</span><span className="text-base font-black text-emerald-900">{priceText}</span></div>{!isSelfProvider ? <button onClick={() => { onClose(); onBookProvider(provider); }} className="px-6 py-3 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm rounded-2xl shadow-md flex items-center gap-2" id="modal-direct-book-provider-btn"><Calendar className="w-4 h-4" /><span>إرسال طلب حجز</span></button> : <div className="px-4 py-2 bg-amber-50 border border-amber-200 rounded-2xl text-xs font-bold text-amber-800 flex items-center gap-1.5"><ShieldCheck className="w-4 h-4 text-amber-600" /><span>هذه خدمتك الخاصة</span></div>}</div>
-      </div>{viewing&&<MediaViewer {...viewing} onClose={()=>setViewing(null)}/>}
+      </div>{viewing&&<MediaViewer {...viewing} onClose={()=>setViewing(null)} onPrevious={allMedia.length>1?()=>{const i=allMedia.findIndex(x=>x.url===viewing.url);setViewing(allMedia[(i-1+allMedia.length)%allMedia.length])}:undefined} onNext={allMedia.length>1?()=>{const i=allMedia.findIndex(x=>x.url===viewing.url);setViewing(allMedia[(i+1)%allMedia.length])}:undefined}/>}
     </div>
   );
 };
