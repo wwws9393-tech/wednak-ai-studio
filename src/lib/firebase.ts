@@ -457,6 +457,32 @@ export function subscribeHalls(callback: (halls: Hall[]) => void) {
     (err) => { console.error('Hall listener failed:', err); callback([]); });
 }
 
+export async function updateHallInFirestore(updatedHall: Hall): Promise<void> {
+  const user = await requireFirebaseUser();
+  const hallRef = doc(db, 'halls', updatedHall.id);
+  const hallSnap = await getDoc(hallRef);
+  const existingHall = hallSnap.exists() ? hallSnap.data() as Partial<Hall> : null;
+
+  if (existingHall?.ownerId && existingHall.ownerId !== user.uid) {
+    throw new Error('لا تملك صلاحية تعديل هذه القاعة.');
+  }
+  if (updatedHall.ownerId && updatedHall.ownerId !== user.uid && existingHall?.ownerId !== user.uid) {
+    throw new Error('لا تملك صلاحية تعديل هذه القاعة.');
+  }
+
+  const savedHall = removeUndefinedDeep({
+    ...updatedHall,
+    ownerId: user.uid,
+    updatedAt: new Date().toISOString(),
+  });
+
+  try {
+    await setDoc(hallRef, savedHall, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `halls/${updatedHall.id}`);
+  }
+}
+
 export function subscribeServiceProviders(callback: (providers: ServiceProvider[]) => void) {
   return onSnapshot(collection(db, 'serviceProviders'),
     (snap) => callback(snap.docs.map((d) => ({ ...d.data(), id: d.id } as ServiceProvider))),
