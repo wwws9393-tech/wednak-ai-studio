@@ -58,6 +58,26 @@ function newestFirst(a: { createdAt?: unknown }, b: { createdAt?: unknown }): nu
   return dateValueMillis(b.createdAt) - dateValueMillis(a.createdAt);
 }
 
+function dateValueIso(value: unknown): string {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  const millis = dateValueMillis(value);
+  return millis ? new Date(millis).toISOString() : '';
+}
+
+function normalizeBookingDates(booking: Booking): Booking {
+  const raw = booking as Booking & { date?: unknown; createdAt?: unknown; updatedAt?: unknown; cancelledAt?: unknown; paidAt?: unknown };
+  const normalizedDate = typeof raw.date === 'string' ? raw.date : dateValueIso(raw.date).slice(0, 10);
+  return {
+    ...booking,
+    date: normalizedDate,
+    createdAt: dateValueIso(raw.createdAt),
+    updatedAt: dateValueIso(raw.updatedAt) || undefined,
+    cancelledAt: dateValueIso(raw.cancelledAt) || undefined,
+    paidAt: dateValueIso(raw.paidAt) || undefined,
+  };
+}
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
   console.error('Firestore Error:', {
     error: error instanceof Error ? error.message : String(error),
@@ -188,7 +208,7 @@ export function subscribeBookings(uid: string, accountType: AccountType, callbac
       ? query(ref, where('targetOwnerId', '==', uid))
       : query(ref, where('requesterId', '==', uid));
   return onSnapshot(q, (snap) => {
-    const list = snap.docs.map((d) => ({ ...d.data(), id: d.id } as Booking));
+    const list = snap.docs.map((d) => normalizeBookingDates({ ...d.data(), id: d.id } as Booking));
     list.sort(newestFirst);
     callback(list);
   }, (err) => { console.error('Bookings listener failed:', err); onError?.(err.message); });
