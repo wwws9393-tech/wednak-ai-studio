@@ -65,15 +65,15 @@ export const ServiceProviderDetailsModal: React.FC<ServiceProviderDetailsModalPr
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto" id="provider-details-modal-overlay">
-      <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-gray-200 flex flex-col justify-between my-auto">
-        <div className="relative h-52 sm:h-64 w-full bg-black rounded-t-3xl overflow-hidden">
+      <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[94vh] overflow-y-auto shadow-2xl border border-gray-200 flex flex-col justify-between my-auto">
+        <div className="relative h-56 sm:h-72 w-full bg-black rounded-t-3xl overflow-visible mb-16">
           <img src={provider.coverImage || provider.avatar} alt={provider.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.src = 'https://images.unsplash.com/photo-1537633552985-df8429e8048b?auto=format&fit=crop&w=1200&q=80'; }} />
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
           <button onClick={onClose} className="absolute top-4 left-4 p-2.5 rounded-full bg-black/50 text-white hover:bg-black/80 shadow-md" id="close-provider-modal-btn"><X className="w-5 h-5" /></button>
           <button onClick={() => onToggleFavorite(provider.id, 'provider')} className={`absolute top-4 right-4 p-2.5 rounded-full backdrop-blur-md shadow-md ${isFavorite ? 'bg-rose-500 text-white' : 'bg-white/80 text-gray-800 hover:text-rose-500'}`} id="favorite-btn-in-provider-modal"><Heart className={`w-5 h-5 ${isFavorite ? 'fill-current text-white' : ''}`} /></button>
-          <div className="absolute bottom-4 right-4 left-4 flex items-end gap-3 text-white" dir="rtl">
-            <div className="w-16 h-16 rounded-2xl border-2 border-white overflow-hidden bg-white shadow-lg shrink-0"><img src={provider.avatar || provider.coverImage} alt="" className="w-full h-full object-cover" /></div>
-            <div className="min-w-0"><span className="bg-amber-500 text-black text-[10px] font-black px-2.5 py-0.5 rounded-md mb-1 inline-block">{provider.serviceCategory}</span><h2 className="text-lg sm:text-xl font-bold flex items-center gap-1.5">{provider.name}{provider.isVerified && <CheckCircle2 className="w-4 h-4 text-emerald-400 fill-emerald-800" />}</h2><div className="flex flex-wrap items-center gap-2 text-xs text-gray-300"><span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-amber-300" />{provider.location || provider.city}</span><span className="flex items-center gap-1 text-amber-300 font-bold"><Star className="w-3.5 h-3.5 fill-current" />{safeRating.toFixed(1)} ({safeReviews} تقييم)</span></div></div>
+          <div className="absolute -bottom-14 right-5 left-5 flex items-end gap-4" dir="rtl">
+            <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full border-4 border-white overflow-hidden bg-white shadow-xl shrink-0"><img src={provider.avatar || provider.coverImage} alt={provider.name} className="w-full h-full object-cover" /></div>
+            <div className="min-w-0 pb-2 text-gray-900"><span className="bg-emerald-700 text-white text-[10px] font-black px-2.5 py-1 rounded-full mb-1 inline-block">{provider.serviceCategory}</span><h2 className="text-xl sm:text-2xl font-black flex items-center gap-1.5">{provider.name}{provider.isVerified && <CheckCircle2 className="w-5 h-5 text-blue-600 fill-blue-50" />}</h2><div className="flex flex-wrap items-center gap-3 text-xs text-gray-600"><span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-emerald-700" />{provider.location || provider.city}</span><span className="flex items-center gap-1 text-amber-700 font-bold"><Star className="w-3.5 h-3.5 fill-current" />{safeRating.toFixed(1)} ({safeReviews} تقييم)</span></div></div>
           </div>
         </div>
 

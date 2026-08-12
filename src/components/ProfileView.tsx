@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { User, ShieldAlert, Phone, Mail, MapPin, Building2, FileText, Lock, HelpCircle, Save, CheckCircle2, Image as ImageIcon } from 'lucide-react';
 import { UserProfile } from '../types';
+import { CroppedImageInput } from './CroppedImageInput';
+import { uploadOwnerMedia } from '../lib/storage';
 
 interface ProfileViewProps {
   currentUser: UserProfile;
@@ -21,6 +23,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ currentUser, onUpdateP
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const uploadProfileImage = async (file: File, kind: 'profile' | 'cover') => {
+    setError(''); setUploading(true);
+    try { const url = await uploadOwnerMedia(file, kind === 'profile' ? 'user-profile' : 'user-cover'); if(kind==='profile') setProfileImageUrl(url); else setCoverImageUrl(url); }
+    catch(err){ setError(err instanceof Error ? err.message : 'تعذر رفع الصورة.'); }
+    finally { setUploading(false); }
+  };
 
   useEffect(() => {
     setName(currentUser.name || ''); setEmail(currentUser.email || ''); setCity(currentUser.city || 'بغداد');
@@ -64,10 +74,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ currentUser, onUpdateP
             <div><label className="text-xs font-bold block mb-1"><Phone className="inline w-3.5 h-3.5"/> رقم الهاتف الموثق</label><input value={currentUser.phone} readOnly className="w-full px-3 py-2 rounded-xl border bg-gray-100 text-xs dir-ltr"/><p className="text-[10px] text-gray-500 mt-1">لا يمكن تغيير رقم الهوية من الملف الشخصي. يتطلب ذلك مسار تحقق مستقل.</p></div>
             <div><label className="text-xs font-bold block mb-1"><Mail className="inline w-3.5 h-3.5"/> البريد الإلكتروني (اختياري)</label><input type="email" value={email} onChange={(e)=>setEmail(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-xs dir-ltr"/></div>
             <div><label className="text-xs font-bold block mb-1"><MapPin className="inline w-3.5 h-3.5"/> المحافظة</label><input value={city} onChange={(e)=>setCity(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-xs"/></div>
-            <div><label className="text-xs font-bold block mb-1"><ImageIcon className="inline w-3.5 h-3.5"/> رابط الصورة الشخصية</label><input value={profileImageUrl} onChange={(e)=>setProfileImageUrl(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-xs dir-ltr"/></div>
-            <div><label className="text-xs font-bold block mb-1">رابط صورة الغلاف</label><input value={coverImageUrl} onChange={(e)=>setCoverImageUrl(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-xs dir-ltr"/></div>
+            <div><label className="text-xs font-bold block mb-1"><ImageIcon className="inline w-3.5 h-3.5"/> الصورة الشخصية</label><CroppedImageInput label="اختيار وتعديل الصورة الشخصية" aspect={1} onReady={(f)=>void uploadProfileImage(f,'profile')}/>{profileImageUrl&&<img src={profileImageUrl} alt="معاينة" className="mt-2 w-20 h-20 rounded-full object-cover"/>}</div>
+            <div><label className="text-xs font-bold block mb-1">صورة الغلاف</label><CroppedImageInput label="اختيار وتعديل صورة الغلاف" aspect={16/7} onReady={(f)=>void uploadProfileImage(f,'cover')}/>{coverImageUrl&&<img src={coverImageUrl} alt="معاينة الغلاف" className="mt-2 w-full h-24 rounded-xl object-cover"/>}</div>
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900"><b>نوع الحساب: {currentUser.accountType}</b><br/>نوع الحساب ثابت ولا يمكن تبديله من الإعدادات. لتسجيل دور مختلف استخدم حساب/رقم آخر وفق سياسة المنصة.</div>
-            <button disabled={saving} className="w-full py-2.5 bg-emerald-700 disabled:bg-gray-400 text-white font-bold text-xs rounded-xl flex justify-center gap-1"><Save className="w-4 h-4"/>{saving?'جاري الحفظ...':'حفظ التعديلات'}</button>
+            <button disabled={saving||uploading} className="w-full py-2.5 bg-emerald-700 disabled:bg-gray-400 text-white font-bold text-xs rounded-xl flex justify-center gap-1"><Save className="w-4 h-4"/>{uploading?'جاري رفع الصورة...':saving?'جاري الحفظ...':'حفظ التعديلات'}</button>
           </form>
         </div>
 

@@ -218,7 +218,7 @@ export function App() {
       return <ServiceProviderHomeView currentUser={currentUser} serviceProviders={serviceProviders} bookings={bookings} posts={posts} onUpdateServiceProvider={() => {}} onUpdateBookingStatus={handleUpdateBookingStatus} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} />;
     }
     if (currentUser.accountType === 'مدير Admin' || currentUser.accountType === 'مدير') {
-      return <AdminHomeView currentUser={currentUser} complaints={complaints} bookings={bookings} onUpdateComplaintStatus={handleUpdateComplaintStatus} />;
+      return <AdminHomeView currentUser={currentUser} complaints={complaints} bookings={bookings} halls={halls} providers={serviceProviders} onUpdateComplaintStatus={handleUpdateComplaintStatus} onUpdateBookingStatus={handleUpdateBookingStatus} />;
     }
 
     switch (currentTab) {
@@ -249,7 +249,7 @@ export function App() {
     <HallDetailsModal hall={selectedHallForModal} isOpen={!!selectedHallForModal} onClose={()=>setSelectedHallForModal(null)} isFavorite={selectedHallForModal?favoriteIds.includes(selectedHallForModal.id):false} onToggleFavorite={()=>selectedHallForModal&&handleToggleFavorite(selectedHallForModal.id,'hall')} currentUser={currentUser} bookings={bookings} posts={posts.filter((p)=>selectedHallForModal&&p.targetType==='hall'&&p.targetId===selectedHallForModal.id)} onBookHall={(hall)=>{setSelectedHallForModal(null);setBookingItemForModal({type:'hall',data:hall});}}/>
     <ServiceProviderDetailsModal provider={selectedProviderForModal} isOpen={!!selectedProviderForModal} onClose={()=>setSelectedProviderForModal(null)} isFavorite={selectedProviderForModal?favoriteIds.includes(selectedProviderForModal.id):false} onToggleFavorite={()=>selectedProviderForModal&&handleToggleFavorite(selectedProviderForModal.id,'provider')} currentUser={currentUser} bookings={bookings} posts={posts.filter((p)=>selectedProviderForModal&&p.targetType==='provider'&&p.targetId===selectedProviderForModal.id)} onBookProvider={(provider)=>{setSelectedProviderForModal(null);setBookingItemForModal({type:'provider',data:provider});}}/>
     <BookingModal item={bookingItemForModal} isOpen={!!bookingItemForModal} onClose={()=>setBookingItemForModal(null)} currentUser={currentUser} bookings={bookings} onLoginSuccess={handleLoginSuccess} onSubmitBooking={handleCreateBooking}/>
-    <BookingDetailsModal booking={selectedBookingForDetails} isOpen={!!selectedBookingForDetails} onClose={()=>setSelectedBookingForDetails(null)} onCancelBooking={handleCancelBooking}/>
+    <BookingDetailsModal booking={selectedBookingForDetails} isOpen={!!selectedBookingForDetails} onClose={()=>setSelectedBookingForDetails(null)} onCancelBooking={handleCancelBooking} currentUser={currentUser} onUpdateStatus={handleUpdateBookingStatus}/>
     <AuthModal isOpen={isAuthModalOpen} onClose={()=>setIsAuthModalOpen(false)} currentUser={currentUser} onLoginSuccess={handleLoginSuccess} onLogout={handleLogout}/>
     <LegalSupportModals activeModal={activeLegalModal} onClose={()=>setActiveLegalModal(null)}/>
   </div>;

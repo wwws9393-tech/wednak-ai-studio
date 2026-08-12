@@ -1,15 +1,17 @@
 import React from 'react';
 import { X, MapPin, Users, CheckCircle2, Clock, XCircle, AlertCircle, Trash2, UserRoundX } from 'lucide-react';
-import { Booking } from '../types';
+import { Booking, BookingStatus, UserProfile } from '../types';
 
 interface BookingDetailsModalProps {
   booking: Booking | null;
   isOpen: boolean;
   onClose: () => void;
   onCancelBooking: (bookingId: string) => void;
+  currentUser: UserProfile;
+  onUpdateStatus: (bookingId: string, status: BookingStatus) => Promise<void> | void;
 }
 
-export const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ booking, isOpen, onClose, onCancelBooking }) => {
+export const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ booking, isOpen, onClose, onCancelBooking, currentUser, onUpdateStatus }) => {
   if (!isOpen || !booking) return null;
 
   const getStatusBadge = (status: Booking['status']) => {
@@ -25,6 +27,14 @@ export const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ bookin
   const statusInfo = getStatusBadge(booking.status);
   const StatusIcon = statusInfo.icon;
   const isCancelled = booking.status === 'ملغي' || booking.status === 'cancelled';
+  const isPending = booking.status === 'قيد المراجعة' || booking.status === 'pending';
+  const isTargetOwner = booking.targetOwnerId === currentUser.id;
+  const confirmStatus = async (status: BookingStatus) => {
+    const label = status === 'مقبول' ? 'قبول وتأكيد' : 'رفض';
+    if (!window.confirm(`هل تؤكد ${label} هذا الحجز؟`)) return;
+    await onUpdateStatus(booking.id, status);
+    onClose();
+  };
   const cancellationActor = booking.cancelledByRole
     ? `${booking.cancelledByRole}${booking.cancelledByName ? ` — ${booking.cancelledByName}` : ''}`
     : 'غير محدد (حجز قديم قبل إضافة سجل الإلغاء)';
@@ -86,9 +96,13 @@ export const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ bookin
 
         <div className="p-4 border-t border-gray-100 flex items-center justify-between bg-gray-50 rounded-b-3xl">
           <button onClick={onClose} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-xl text-xs font-bold hover:bg-gray-300 transition-colors">إغلاق</button>
-          {!isCancelled && booking.status !== 'مرفوض' && booking.status !== 'rejected' && (
+          <div className="flex items-center gap-2">
+          {isTargetOwner && isPending && <><button onClick={()=>void confirmStatus('مقبول')} className="px-4 py-2 bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1"><CheckCircle2 className="w-4 h-4"/>قبول وتأكيد</button><button onClick={()=>void confirmStatus('مرفوض')} className="px-4 py-2 bg-rose-100 text-rose-800 rounded-xl text-xs font-bold flex items-center gap-1"><XCircle className="w-4 h-4"/>رفض</button></>}
+          {!isCancelled && booking.status !== 'مرفوض' && booking.status !== 'rejected' && !isPending && (
             <button onClick={() => { if (window.confirm('هل أنت متأكد من إلغاء هذا الحجز؟')) { onCancelBooking(booking.id); onClose(); } }} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1 shadow-2xs" id="cancel-my-booking-btn"><Trash2 className="w-3.5 h-3.5" /><span>إلغاء الطلب</span></button>
           )}
+          {!isTargetOwner && isPending && <button onClick={() => { if (window.confirm('هل تريد إلغاء طلب الحجز المعلّق؟')) { onCancelBooking(booking.id); onClose(); } }} className="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold">إلغاء الطلب</button>}
+          </div>
         </div>
       </div>
     </div>

@@ -3,6 +3,7 @@ import { Camera, Calendar, CheckCircle2, XCircle, Clock, Sparkles, Save, AlertCi
 import { ServiceProvider, Booking, UserProfile, FeedPost, ServiceCategory } from '../types';
 import { createBusinessOffer, saveOwnedServiceProvider } from '../lib/business';
 import { uploadOwnerMedia } from '../lib/storage';
+import { CroppedImageInput } from './CroppedImageInput';
 
 interface ServiceProviderHomeViewProps {
   currentUser: UserProfile;
@@ -45,6 +46,7 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
   const [portfolioDirty, setPortfolioDirty] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [updatingBookingId, setUpdatingBookingId] = useState('');
   const [postTitle, setPostTitle] = useState('');
   const [postCaption, setPostCaption] = useState('');
   const [postMediaUrl, setPostMediaUrl] = useState('');
@@ -123,11 +125,13 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
   };
 
   const updateBooking = async (bookingId: string, status: Booking['status']) => {
-    setError(''); setMessage('');
+    if (updatingBookingId) return;
+    setError(''); setMessage(''); setUpdatingBookingId(bookingId);
     try {
       await onUpdateBookingStatus(bookingId, status);
       setMessage(status === 'مقبول' ? 'تم قبول الحجز وتثبيت الموعد.' : 'تم رفض الحجز.');
-    } catch (err) { setError(err instanceof Error ? err.message : 'تعذر تحديث الحجز.'); }
+    } catch (err) { const raw=err instanceof Error?err.message:''; setError(raw.includes('محجوز')?'يتعارض هذا الطلب مع حجز مؤكد في نفس التاريخ والوقت. يمكنك رفضه أو قبول طلب بموعد مختلف.':raw||'تعذر تحديث الحجز.'); }
+    finally { setUpdatingBookingId(''); }
   };
 
   const publishPost = async (event: React.FormEvent) => {
@@ -183,8 +187,8 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
               <div><FieldLabel>نوع الخدمة</FieldLabel><select value={draft.serviceCategory} onChange={(e)=>setField('serviceCategory', e.target.value as ServiceCategory)} className="w-full px-3 py-2 border rounded-xl text-xs">{CATEGORIES.map((category)=><option key={category}>{category}</option>)}</select></div>
               <div className="grid grid-cols-2 gap-2"><div><FieldLabel>العنوان</FieldLabel><input value={draft.location} onChange={(e)=>setField('location',e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs" required/></div><div><FieldLabel>المحافظة</FieldLabel><input value={draft.city} onChange={(e)=>setField('city',e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs" required/></div></div>
               <div className="grid grid-cols-2 gap-2">
-                <div><FieldLabel>الصورة الرئيسية</FieldLabel><label className="flex items-center justify-center gap-2 border border-dashed rounded-xl p-3 text-xs font-bold cursor-pointer bg-gray-50"><Upload className="w-4 h-4"/>اختيار من المعرض<input type="file" accept="image/*" className="hidden" onChange={(e)=>{const f=e.target.files?.[0]; if(f) void uploadSingle(f,'cover');}}/></label>{draft.coverImage && <img src={draft.coverImage} className="mt-2 h-24 w-full object-cover rounded-xl" alt="الغلاف"/>}</div>
-                <div><FieldLabel>صورة الحساب</FieldLabel><label className="flex items-center justify-center gap-2 border border-dashed rounded-xl p-3 text-xs font-bold cursor-pointer bg-gray-50"><Upload className="w-4 h-4"/>اختيار من المعرض<input type="file" accept="image/*" className="hidden" onChange={(e)=>{const f=e.target.files?.[0]; if(f) void uploadSingle(f,'avatar');}}/></label>{draft.avatar && <img src={draft.avatar} className="mt-2 h-20 w-20 object-cover rounded-full mx-auto" alt="الحساب"/>}</div>
+                <div><FieldLabel>الصورة الرئيسية</FieldLabel><CroppedImageInput label="اختيار وضبط الغلاف" aspect={16/7} onReady={(f)=>void uploadSingle(f,'cover')}/>{draft.coverImage && <img src={draft.coverImage} className="mt-2 h-24 w-full object-cover rounded-xl" alt="الغلاف"/>}</div>
+                <div><FieldLabel>صورة الحساب</FieldLabel><CroppedImageInput label="اختيار وضبط صورة الحساب" aspect={1} onReady={(f)=>void uploadSingle(f,'avatar')}/>{draft.avatar && <img src={draft.avatar} className="mt-2 h-20 w-20 object-cover rounded-full mx-auto" alt="الحساب"/>}</div>
               </div>
               <div><FieldLabel>السعر الابتدائي (د.ع)</FieldLabel><input type="number" min="0" value={draft.priceStart || ''} onChange={(e)=>setField('priceStart',Number(e.target.value))} className="w-full px-3 py-2 border rounded-xl text-xs"/></div>
               <div><FieldLabel>وصف الخدمة</FieldLabel><textarea value={draft.description} onChange={(e)=>setField('description',e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs h-20"/></div>
@@ -195,7 +199,7 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
 
         <section className="bg-white p-5 rounded-3xl border border-gray-200 space-y-3">
           <h2 className="font-bold flex items-center gap-2"><Calendar className="w-5 h-5 text-emerald-700"/>الحجوزات الواردة ({providerBookings.length})</h2>
-          {providerBookings.length === 0 ? <div className="p-8 text-center text-xs text-gray-500 border border-dashed rounded-2xl">لا توجد حجوزات موجهة إلى خدمتك حالياً.</div> : providerBookings.map((booking)=><div key={booking.id} className="p-4 border rounded-2xl space-y-2"><div className="flex justify-between gap-2"><b className="text-xs">{booking.requesterName || booking.customerName}</b><span className={`text-[11px] font-bold ${booking.status === 'مقبول' ? 'text-emerald-700' : booking.status === 'مرفوض' ? 'text-rose-700' : 'text-amber-700'}`}>{booking.status}</span></div><div className="text-[11px] text-gray-600">{booking.date} • {booking.startTime || booking.timeSlot} {booking.endTime ? `- ${booking.endTime}` : ''}</div>{(booking.status === 'قيد المراجعة' || booking.status === 'pending') && <div className="flex gap-2"><button type="button" onClick={()=>void updateBooking(booking.id,'مقبول')} className="px-3 py-2 bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold"><CheckCircle2 className="inline w-4 h-4 ml-1"/>قبول</button><button type="button" onClick={()=>void updateBooking(booking.id,'مرفوض')} className="px-3 py-2 bg-rose-100 text-rose-800 rounded-xl text-xs font-bold"><XCircle className="inline w-4 h-4 ml-1"/>رفض</button></div>}</div>)}
+          {providerBookings.length === 0 ? <div className="p-8 text-center text-xs text-gray-500 border border-dashed rounded-2xl">لا توجد حجوزات موجهة إلى خدمتك حالياً.</div> : providerBookings.map((booking)=><div key={booking.id} className="p-4 border rounded-2xl space-y-2"><div className="flex justify-between gap-2"><b className="text-xs">{booking.requesterName || booking.customerName}</b><span className={`text-[11px] font-bold ${booking.status === 'مقبول' ? 'text-emerald-700' : booking.status === 'مرفوض' ? 'text-rose-700' : 'text-amber-700'}`}>{booking.status}</span></div><div className="text-[11px] text-gray-600">{booking.date} • {booking.startTime || booking.timeSlot} {booking.endTime ? `- ${booking.endTime}` : ''}</div>{(booking.status === 'قيد المراجعة' || booking.status === 'pending') && <div className="flex gap-2"><button disabled={!!updatingBookingId} type="button" onClick={()=>void updateBooking(booking.id,'مقبول')} className="px-3 py-2 bg-emerald-100 disabled:opacity-50 text-emerald-800 rounded-xl text-xs font-bold"><CheckCircle2 className="inline w-4 h-4 ml-1"/>{updatingBookingId===booking.id?'جاري التنفيذ...':'قبول'}</button><button disabled={!!updatingBookingId} type="button" onClick={()=>void updateBooking(booking.id,'مرفوض')} className="px-3 py-2 bg-rose-100 disabled:opacity-50 text-rose-800 rounded-xl text-xs font-bold"><XCircle className="inline w-4 h-4 ml-1"/>رفض</button></div>}</div>)}
         </section>
       </div>
 

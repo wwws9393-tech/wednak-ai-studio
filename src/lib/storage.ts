@@ -13,6 +13,8 @@ export type MediaFolder =
   | 'hall-profile'
   | 'provider-cover'
   | 'provider-avatar'
+  | 'user-profile'
+  | 'user-cover'
   | 'portfolio'
   | 'post-media';
 
