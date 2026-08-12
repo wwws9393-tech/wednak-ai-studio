@@ -133,7 +133,7 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
         </div>
 
         <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4 flex items-center justify-between gap-4 rounded-b-3xl" dir="rtl"><div><span className="text-[10px] text-gray-500 block">الإجمالي بالدينار العراقي:</span><span className="text-lg font-black text-emerald-900">{priceText}</span></div>{!isSelfHall ? <button onClick={() => { onClose(); onBookHall(hall); }} className="px-5 sm:px-6 py-3 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm rounded-2xl shadow-md flex items-center gap-2 shrink-0" id="modal-direct-book-hall-btn"><Calendar className="w-4 h-4" /><span>تأكيد موعد الحجز</span><ArrowLeft className="w-4 h-4" /></button> : <div className="px-4 py-2 bg-amber-50 border border-amber-200 rounded-2xl text-xs font-bold text-amber-800 flex items-center gap-1.5"><ShieldCheck className="w-4 h-4 text-amber-600" /><span>هذه قاعتك الخاصة</span></div>}</div>
-      </div>{viewingPost&&<MediaViewer url={viewingPost.mediaUrl} type={viewingPost.mediaType} title={viewingPost.title} description={viewingPost.caption} onClose={()=>setViewingPost(null)}/>}
+      </div>{viewingPost&&<MediaViewer url={viewingPost.mediaUrl} type={viewingPost.mediaType} title={viewingPost.title} description={viewingPost.caption} onClose={()=>setViewingPost(null)} onPrevious={hallPosts.length>1?()=>{const i=hallPosts.findIndex(x=>x.id===viewingPost.id);setViewingPost(hallPosts[(i-1+hallPosts.length)%hallPosts.length])}:undefined} onNext={hallPosts.length>1?()=>{const i=hallPosts.findIndex(x=>x.id===viewingPost.id);setViewingPost(hallPosts[(i+1)%hallPosts.length])}:undefined}/>}
     </div>
   );
 };
