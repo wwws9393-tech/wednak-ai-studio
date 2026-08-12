@@ -34,6 +34,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
         return 'bg-gray-100 text-gray-700';
     }
   };
+  const createdText=(value:string)=>{const date=new Date(value);return Number.isNaN(date.getTime())?'غير معروف':date.toLocaleString('ar-IQ',{year:'numeric',month:'long',day:'numeric',hour:'numeric',minute:'2-digit'});};
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6" id="bookings-view-container">
@@ -146,6 +147,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                   عرض التفاصيل <Eye className="w-3.5 h-3.5" />
                 </span>
               </div>
+              <div className="pt-2 border-t border-black text-[11px] font-medium text-black">تاريخ إنشاء الحجز: {createdText(b.createdAt)}</div>
             </div>
           ))}
         </div>
