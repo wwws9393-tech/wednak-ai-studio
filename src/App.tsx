@@ -46,6 +46,7 @@ import {
   deletePostInFirestore,
   subscribeAllUsers,
   setUserBlockedInFirestore,
+  deleteUserAndDataInFirestore,
   fetchPublicUserProfile,
   subscribeUserProfile,
 } from './lib/firebase';
@@ -291,7 +292,7 @@ export function App() {
     <BookingDetailsModal booking={selectedBookingForDetails} isOpen={!!selectedBookingForDetails} onClose={()=>setSelectedBookingForDetails(null)} onCancelBooking={handleCancelBooking} currentUser={currentUser} onUpdateStatus={handleUpdateBookingStatus} onOpenRequester={async(id)=>{const u=await fetchPublicUserProfile(id);if(u){setSelectedBookingForDetails(null);setSelectedUserProfile(u);}}}/>
     <AuthModal isOpen={isAuthModalOpen} onClose={()=>setIsAuthModalOpen(false)} currentUser={currentUser} onLoginSuccess={handleLoginSuccess} onLogout={handleLogout}/>
     <LegalSupportModals activeModal={activeLegalModal} onClose={()=>setActiveLegalModal(null)}/>
-    <UserProfileModal user={selectedUserProfile} bookings={bookings} isAdmin={currentUser.accountType==='مدير'||currentUser.accountType==='مدير Admin'} onClose={()=>setSelectedUserProfile(null)} onBlock={async(u,blocked)=>{await setUserBlockedInFirestore(u.id,blocked,currentUser);setSelectedUserProfile({...u,isBlocked:blocked});}} onOpenBusiness={(u)=>{setSelectedUserProfile(null);if(u.accountType==='صاحب قاعة'){const h=halls.find(x=>x.ownerId===u.id);if(h)setSelectedHallForModal(h);}else if(u.accountType==='مزود خدمة'){const p=serviceProviders.find(x=>x.ownerId===u.id);if(p)setSelectedProviderForModal(p);}}}/>
+    <UserProfileModal user={selectedUserProfile} bookings={bookings} isAdmin={currentUser.accountType==='مدير'||currentUser.accountType==='مدير Admin'} onClose={()=>setSelectedUserProfile(null)} onBlock={async(u,blocked)=>{await setUserBlockedInFirestore(u.id,blocked,currentUser);setSelectedUserProfile({...u,isBlocked:blocked});}} onDelete={async(u)=>{await deleteUserAndDataInFirestore(u.id,currentUser);setSelectedUserProfile(null);}} onOpenBusiness={(u)=>{setSelectedUserProfile(null);if(u.accountType==='صاحب قاعة'){const h=halls.find(x=>x.ownerId===u.id);if(h)setSelectedHallForModal(h);}else if(u.accountType==='مزود خدمة'){const p=serviceProviders.find(x=>x.ownerId===u.id);if(p)setSelectedProviderForModal(p);}}}/>
   </div>;
 }
 
