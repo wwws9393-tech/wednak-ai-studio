@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { Building2, Calendar, CheckCircle2, XCircle, Clock, Plus, Sparkles, DollarSign, Users, MapPin, Save, AlertCircle } from 'lucide-react';
 import { Hall, Booking, UserProfile, FeedPost } from '../types';
+import { Coordinates, HallMap } from './HallMap';
 
 interface OwnerHomeViewProps {
   currentUser: UserProfile;
   halls: Hall[];
   bookings: Booking[];
-  onUpdateHall: (updatedHall: Hall) => void;
+  onUpdateHall: (updatedHall: Hall) => Promise<void> | void;
   onUpdateBookingStatus: (bookingId: string, newStatus: Booking['status']) => void;
   onCreatePost: (post: Omit<FeedPost, 'id' | 'createdAt' | 'likesCount' | 'sharesCount'>) => void;
 }
@@ -20,7 +21,7 @@ export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({
   onCreatePost,
 }) => {
   // Find hall owned by this owner
-  const myHall = halls.find((h) => h.id === currentUser.ownedHallId || h.ownerId === currentUser.id) || halls[0] || {
+  const myHall: Hall = halls.find((h) => h.id === currentUser.ownedHallId || h.ownerId === currentUser.id) || halls[0] || {
     id: 'hall-fallback',
     name: 'قاعة تجريبية',
     city: 'بغداد',
@@ -33,14 +34,9 @@ export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({
     rating: 4.8,
     reviewsCount: 12,
     images: ['https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=800&q=80'],
-    coverImage: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=800&q=80',
     ownerId: currentUser.id,
-    ownerName: currentUser.name,
-    ownerPhone: currentUser.phone,
     description: 'تفاصيل القاعة',
     features: [],
-    availableSlots: [],
-    isPromoted: false,
     category: 'قاعات فخمة'
   };
 
@@ -63,6 +59,7 @@ export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({
   const [hallCapacity, setHallCapacity] = useState(myHall.capacity);
   const [hallDescription, setHallDescription] = useState(myHall.description);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [mapMessage, setMapMessage] = useState('');
 
   // Create Post Form State
   const [isCreatingPost, setIsCreatingPost] = useState(false);
@@ -70,7 +67,7 @@ export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({
   const [postCaption, setPostCaption] = useState('');
   const [postMediaUrl, setPostMediaUrl] = useState('');
 
-  const handleSaveHallDetails = (e: React.FormEvent) => {
+  const handleSaveHallDetails = async (e: React.FormEvent) => {
     e.preventDefault();
     const updated: Hall = {
       ...myHall,
@@ -82,10 +79,30 @@ export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({
       capacity: Number(hallCapacity),
       description: hallDescription,
     };
-    onUpdateHall(updated);
+    await onUpdateHall(updated);
     setIsEditingHall(false);
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
+  };
+
+  const handleSaveMapLocation = async (coordinates: Coordinates) => {
+    await onUpdateHall({
+      ...myHall,
+      mapLatitude: coordinates.latitude,
+      mapLongitude: coordinates.longitude,
+    });
+    setMapMessage('تم حفظ موقع القاعة على الخريطة بنجاح');
+    setTimeout(() => setMapMessage(''), 3000);
+  };
+
+  const handleDeleteMapLocation = async () => {
+    await onUpdateHall({
+      ...myHall,
+      mapLatitude: null,
+      mapLongitude: null,
+    });
+    setMapMessage('تم حذف موقع القاعة من الخريطة');
+    setTimeout(() => setMapMessage(''), 3000);
   };
 
   const handlePublishPost = (e: React.FormEvent) => {
@@ -401,6 +418,27 @@ export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({
                 </div>
               </div>
             </div>
+
+            <HallMap
+              hallName={myHall.name}
+              coordinates={
+                myHall.mapLatitude != null && myHall.mapLongitude != null
+                  ? {
+                      latitude: myHall.mapLatitude,
+                      longitude: myHall.mapLongitude,
+                    }
+                  : null
+              }
+              editable
+              compact
+              onSave={handleSaveMapLocation}
+              onDelete={handleDeleteMapLocation}
+            />
+            {mapMessage && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-bold text-emerald-800">
+                {mapMessage}
+              </div>
+            )}
 
             {!isEditingHall ? (
               <div className="space-y-3 text-xs text-gray-700">

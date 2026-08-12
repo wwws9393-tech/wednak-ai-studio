@@ -6,6 +6,8 @@ export interface Hall {
   name: string;
   location: string;
   city: string;
+  mapLatitude?: number | null;
+  mapLongitude?: number | null;
   price: number;
   priceFormatted: string;
   capacity: number;

@@ -43,6 +43,7 @@ import {
   subscribeServiceProviders,
   subscribePosts,
   createPostInFirestore,
+  updateHallInFirestore,
 } from './lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { Building2, Camera, Sparkles, MapPin, ArrowLeft, Heart, Search, Calendar, ShieldAlert } from 'lucide-react';
@@ -257,6 +258,10 @@ export function App() {
     await createPostInFirestore(postData);
   };
 
+  const handleUpdateHall = async (updatedHall: Hall) => {
+    await updateHallInFirestore(updatedHall);
+  };
+
   // Filtered Items by City
   const filteredHalls = halls.filter(
     (h) => selectedCity === 'جميع المحافظات' || h.city === selectedCity
@@ -282,7 +287,7 @@ export function App() {
           currentUser={currentUser}
           halls={halls}
           bookings={bookings}
-          onUpdateHall={() => {}}
+          onUpdateHall={handleUpdateHall}
           onUpdateBookingStatus={handleUpdateBookingStatus}
           onCreatePost={handleCreatePost}
         />
@@ -565,10 +570,12 @@ export function App() {
         onClose={() => setSelectedHallForModal(null)}
         isFavorite={selectedHallForModal ? favoriteIds.includes(selectedHallForModal.id) : false}
         onToggleFavorite={() => selectedHallForModal && handleToggleFavorite(selectedHallForModal.id, 'hall')}
-        onOpenBookingModal={(hall) => {
+        onBookHall={(hall) => {
           setSelectedHallForModal(null);
           setBookingItemForModal({ type: 'hall', data: hall });
         }}
+        currentUser={currentUser}
+        bookings={bookings}
       />
 
       <ServiceProviderDetailsModal

@@ -18,6 +18,7 @@ import {
   getDocs,
   runTransaction,
   deleteDoc,
+  deleteField,
 } from 'firebase/firestore';
 
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -555,6 +556,42 @@ export function subscribeHalls(callback: (halls: Hall[]) => void) {
     console.error('Error subscribing to halls:', err);
     callback(INITIAL_HALLS);
   });
+}
+
+export async function updateHallInFirestore(updatedHall: Hall): Promise<void> {
+  const firebaseUser = await ensureFirebaseAuth();
+  if (!firebaseUser) {
+    throw new Error('يجب تسجيل الدخول لحفظ بيانات القاعة.');
+  }
+  const userProfileSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
+  const ownsHallFromProfile =
+    userProfileSnap.data()?.ownedHallId === updatedHall.id;
+  if (
+    updatedHall.ownerId &&
+    updatedHall.ownerId !== firebaseUser.uid &&
+    !ownsHallFromProfile
+  ) {
+    throw new Error('لا تملك صلاحية تعديل هذه القاعة.');
+  }
+
+  try {
+    const hasMapLocation =
+      typeof updatedHall.mapLatitude === 'number' &&
+      typeof updatedHall.mapLongitude === 'number';
+    await setDoc(
+      doc(db, 'halls', updatedHall.id),
+      {
+        ...updatedHall,
+        ownerId: firebaseUser.uid,
+        mapLatitude: hasMapLocation ? updatedHall.mapLatitude : deleteField(),
+        mapLongitude: hasMapLocation ? updatedHall.mapLongitude : deleteField(),
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `halls/${updatedHall.id}`);
+  }
 }
 
 export function subscribeServiceProviders(callback: (providers: ServiceProvider[]) => void) {

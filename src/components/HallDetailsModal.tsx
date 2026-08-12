@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Star, MapPin, Users, Sparkles, CheckCircle, Heart, Phone, ArrowLeft, Shield, Calendar, Clock, Check, AlertCircle, ShieldCheck } from 'lucide-react';
 import { Hall, UserProfile, Booking } from '../types';
+import { HallMap } from './HallMap';
 
 interface HallDetailsModalProps {
   hall: Hall | null;
@@ -23,13 +24,13 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
   currentUser,
   bookings = [],
 }) => {
-  if (!isOpen || !hall) return null;
-
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => {
     const today = new Date();
     return today.toISOString().split('T')[0];
   });
+
+  if (!isOpen || !hall) return null;
 
   const isSelfHall = currentUser && (currentUser.id === hall.ownerId || currentUser.ownedHallId === hall.id);
 
@@ -141,6 +142,18 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
               </span>
             </div>
           </div>
+
+          <HallMap
+            hallName={hall.name}
+            coordinates={
+              hall.mapLatitude != null && hall.mapLongitude != null
+                ? {
+                    latitude: hall.mapLatitude,
+                    longitude: hall.mapLongitude,
+                  }
+                : null
+            }
+          />
 
           {/* Description */}
           <div>
