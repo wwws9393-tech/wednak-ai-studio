@@ -23,6 +23,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 
 import { Hall, ServiceProvider, FeedPost, Booking, Complaint, AppNotification, UserProfile, BookingStatus } from './types';
 import { GUEST_ANONYMOUS_USER } from './data/usersDatabase';
+import { TEMP_DEMO_HALLS, TEMP_DEMO_PROVIDERS } from './data/tempDemoData';
 import {
   auth,
   ensureFirebaseAuth,
@@ -52,8 +53,8 @@ const CITIES = ['جميع المحافظات', 'بغداد', 'البصرة', 'ن
 function notificationStorageKey(uid: string) { return `wednak-read-notifications-${uid}`; }
 
 export function App() {
-  const [halls, setHalls] = useState<Hall[]>([]);
-  const [serviceProviders, setServiceProviders] = useState<ServiceProvider[]>([]);
+  const [halls, setHalls] = useState<Hall[]>(TEMP_DEMO_HALLS);
+  const [serviceProviders, setServiceProviders] = useState<ServiceProvider[]>(TEMP_DEMO_PROVIDERS);
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [selectedCity, setSelectedCity] = useState<string>('جميع المحافظات');
   const [currentTab, setCurrentTab] = useState<string>('home');
@@ -68,8 +69,8 @@ export function App() {
 
   useEffect(() => {
     seedInitialDataIfEmpty();
-    const unsubHalls = subscribeHalls(setHalls);
-    const unsubProviders = subscribeServiceProviders(setServiceProviders);
+    const unsubHalls = subscribeHalls((liveHalls) => setHalls([...TEMP_DEMO_HALLS, ...liveHalls]));
+    const unsubProviders = subscribeServiceProviders((liveProviders) => setServiceProviders([...TEMP_DEMO_PROVIDERS, ...liveProviders]));
     const unsubPosts = subscribePosts(setPosts);
     return () => { unsubHalls(); unsubProviders(); unsubPosts(); };
   }, []);
