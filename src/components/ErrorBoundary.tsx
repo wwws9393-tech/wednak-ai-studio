@@ -1,10 +1,10 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React from 'react';
+import type { ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface Props {
   children: ReactNode;
   fallbackTitle?: string;
-  key?: React.Key;
 }
 
 interface State {
@@ -13,27 +13,27 @@ interface State {
   errorInfo: ErrorInfo | null;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
-  override state: State = {
+export class ErrorBoundary extends React.Component<Props, State> {
+  state: State = {
     hasError: false,
     error: null,
     errorInfo: null,
   };
 
-  public static getDerivedStateFromError(error: Error): Partial<State> {
+  static getDerivedStateFromError(error: Error): Partial<State> {
     return { hasError: true, error };
   }
 
-  override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error("ErrorBoundary caught an error:", error, errorInfo);
+  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+    console.error('ErrorBoundary caught an error:', error, errorInfo);
     this.setState({ errorInfo });
   }
 
-  private handleReset = () => {
+  private handleReset = (): void => {
     this.setState({ hasError: false, error: null, errorInfo: null });
   };
 
-  override render() {
+  render(): ReactNode {
     if (this.state.hasError) {
       return (
         <div className="max-w-4xl mx-auto my-12 p-8 bg-white rounded-3xl border border-rose-200 shadow-xl dir-rtl text-center space-y-4">
@@ -59,7 +59,7 @@ export class ErrorBoundary extends Component<Props, State> {
             className="px-6 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 mx-auto"
           >
             <RefreshCw className="w-4 h-4" />
-            <span>إعادة تحميل الصفحة</span>
+            <span>إعادة المحاولة</span>
           </button>
         </div>
       );

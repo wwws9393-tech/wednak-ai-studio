@@ -1,0 +1,52 @@
+name: One-time Firestore undefined-field fix
+
+on:
+  push:
+    branches: [chatgpt-production-hardening]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Add one-time Firestore undefined-field fix'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt-production-hardening
+
+      - name: Patch Firestore user serialization
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/lib/firebase.ts')
+          s = p.read_text()
+
+          marker = "export async function saveUserToFirestore(user: UserProfile): Promise<UserProfile> {"
+          idx = s.index(marker)
+          helper = '''function removeUndefinedDeep<T>(value: T): T {\n  if (Array.isArray(value)) {\n    return value.map((item) => removeUndefinedDeep(item)) as T;\n  }\n  if (value && typeof value === 'object') {\n    const result: Record<string, unknown> = {};\n    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {\n      if (item !== undefined) result[key] = removeUndefinedDeep(item);\n    }\n    return result as T;\n  }\n  return value;\n}\n\n'''
+          if 'function removeUndefinedDeep' not in s:
+            s = s[:idx] + helper + s[idx:]
+
+          old = "  try { await setDoc(ref, saved, { merge: true }); return saved; }"
+          new = "  const firestoreSafeUser = removeUndefinedDeep(saved);\n  try { await setDoc(ref, firestoreSafeUser, { merge: true }); return saved; }"
+          if old not in s:
+            raise SystemExit('saveUser setDoc marker not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+
+      - name: Validate build
+        run: |
+          npm install
+          npx tsc --noEmit
+          npm run build
+
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/firebase.ts
+          git commit -m "Ignore undefined optional profile fields in Firestore writes"
+          git push origin HEAD:chatgpt-production-hardening

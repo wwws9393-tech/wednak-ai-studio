@@ -1,1 +1,62 @@
+@import url('https://fonts.googleapis.com/css2?family=Allura&display=swap');
 @import "tailwindcss";
+
+.wednak-logo-stage { position: relative; perspective: 560px; }
+.wednak-logo-stage::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  left: 50%;
+  bottom: 1px;
+  width: 27px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgb(0 56 43 / .25);
+  filter: blur(3px);
+  transform: translateX(-50%);
+}
+.wednak-logo-3d {
+  position: relative;
+  z-index: 1;
+  transform-style: preserve-3d;
+  animation: wednak-logo-spin 5.5s cubic-bezier(.45,.05,.55,.95) infinite;
+  will-change: transform;
+}
+@keyframes wednak-logo-spin {
+  0% { transform: rotateX(-7deg) rotateY(0deg) translateZ(0); }
+  25% { transform: rotateX(5deg) rotateY(90deg) translateZ(5px); }
+  50% { transform: rotateX(-4deg) rotateY(180deg) translateZ(0); }
+  75% { transform: rotateX(6deg) rotateY(270deg) translateZ(5px); }
+  100% { transform: rotateX(-7deg) rotateY(360deg) translateZ(0); }
+}
+@media (prefers-reduced-motion: reduce) { .wednak-logo-3d { animation: none; transform: rotateX(-5deg) rotateY(-8deg); } }
+
+.wedding-wordmark {
+  display: inline-block;
+  color: #064e3b;
+  font-family: 'Allura', 'Segoe Script', 'Snell Roundhand', 'Brush Script MT', cursive;
+  font-size: 1.55rem;
+  line-height: .9;
+  font-weight: 400;
+  letter-spacing: .01em;
+  transform-origin: center bottom;
+  transform: perspective(220px) rotateX(2deg) rotateY(-2deg);
+  text-shadow:
+    0 .5px 0 #0b6b51,
+    0 1px 0 #075c46,
+    0 3px 5px rgb(0 64 48 / .14);
+  transition: transform .35s ease, text-shadow .35s ease;
+}
+
+#brand-logo-btn:hover .wedding-wordmark {
+  transform: perspective(220px) rotateX(0deg) rotateY(3deg) translateY(-1px);
+  text-shadow:
+    0 .5px 0 #0b6b51,
+    0 1px 0 #075c46,
+    0 5px 8px rgb(0 64 48 / .18);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wedding-wordmark,
+  #brand-logo-btn:hover .wedding-wordmark { transform: none; transition: none; }
+}

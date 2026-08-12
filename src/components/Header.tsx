@@ -1,5 +1,5 @@
 import React from 'react';
-import { Heart, Bell, Search, User, Sparkles, MapPin, ShieldAlert } from 'lucide-react';
+import { Heart, Bell, Search, User, MapPin } from 'lucide-react';
 import { AccountType } from '../types';
 
 interface HeaderProps {
@@ -11,7 +11,6 @@ interface HeaderProps {
   favoritesCount: number;
   unreadNotificationsCount: number;
   currentAccountType: AccountType;
-  onChangeAccountType: (type: AccountType) => void;
   onOpenAuthModal?: () => void;
 }
 
@@ -24,34 +23,31 @@ export const Header: React.FC<HeaderProps> = ({
   favoritesCount = 0,
   unreadNotificationsCount = 0,
   currentAccountType = 'زبون',
-  onChangeAccountType,
   onOpenAuthModal,
 }) => {
+  const isAdmin = currentAccountType === 'مدير' || currentAccountType === 'مدير Admin';
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-amber-100 shadow-sm transition-all" id="app-main-header">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-3">
-          
-          {/* Right Section: Brand & City Picker */}
-          <div className="flex items-center gap-4">
-            <button 
+      <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16 gap-1.5 sm:gap-3 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0 shrink">
+            <button
               onClick={() => onSelectTab('home')}
-              className="flex items-center gap-2 group text-right focus:outline-none"
+              className="flex items-center gap-1 sm:gap-2 group text-right focus:outline-none min-w-0"
               id="brand-logo-btn"
             >
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-700 via-emerald-600 to-amber-600 flex items-center justify-center text-white shadow-md group-hover:scale-105 transition-transform">
-                <Sparkles className="w-5 h-5 text-amber-200" />
+              <div className="wednak-logo-stage w-9 h-9 sm:w-11 sm:h-11 flex items-center justify-center shrink-0" aria-hidden="true">
+                <img src="/wednak-mark-green.svg" alt="" className="wednak-logo-3d w-8 h-8 sm:w-10 sm:h-10 object-contain" />
               </div>
               <div className="flex flex-col">
                 <span className="font-bold text-xl text-emerald-900 tracking-tight flex items-center gap-1">
-                  Wedنك <span className="text-amber-600 text-xs font-normal bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">ويدنك</span>
+                  <span className="wedding-wordmark" aria-label="WEDDING">Wedding</span> <span className="hidden sm:inline text-amber-600 text-xs font-normal bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">ويدنك</span>
                 </span>
-                <span className="text-[10px] text-gray-500 font-medium">حجوزات القاعات والزفاف في العراق</span>
+                <span className="hidden sm:block text-[10px] text-gray-500 font-medium">حجوزات القاعات والزفاف في العراق</span>
               </div>
             </button>
 
-            {/* City Selector Dropdown */}
-            <div className="hidden md:flex items-center gap-1 bg-emerald-50/80 px-3 py-1.5 rounded-xl border border-emerald-100 text-xs font-semibold text-emerald-800">
+            {!isAdmin && <div className="hidden md:flex items-center gap-1 bg-emerald-50/80 px-3 py-1.5 rounded-xl border border-emerald-100 text-xs font-semibold text-emerald-800">
               <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
               <select
                 value={selectedCity}
@@ -63,11 +59,10 @@ export const Header: React.FC<HeaderProps> = ({
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
-            </div>
+            </div>}
           </div>
 
-          {/* Navigation Links for Desktop */}
-          <nav className="hidden lg:flex items-center gap-1">
+          {!isAdmin && <nav className="hidden lg:flex items-center gap-1">
             {[
               { id: 'home', label: 'الرئيسية' },
               { id: 'explore', label: 'الاستكشاف (Explore)' },
@@ -89,27 +84,23 @@ export const Header: React.FC<HeaderProps> = ({
                 {nav.label}
               </button>
             ))}
-          </nav>
+          </nav>}
 
-          {/* Left Section: Account Switcher & Shortcuts */}
-          <div className="flex items-center gap-2">
-            
-            {/* Quick Search Button */}
-            <button
+          <div className="flex items-center gap-0.5 sm:gap-2 shrink-0">
+            {!isAdmin && <button
               onClick={() => onSelectTab('search')}
-              className={`p-2 rounded-xl text-gray-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors ${currentTab === 'search' ? 'bg-emerald-100 text-emerald-800' : ''}`}
+              className={`p-1.5 sm:p-2 rounded-xl text-gray-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors ${currentTab === 'search' ? 'bg-emerald-100 text-emerald-800' : ''}`}
               title="بحث سريع"
               id="header-search-icon-btn"
             >
               <Search className="w-5 h-5" />
-            </button>
+            </button>}
 
-            {/* Notifications Icon with Badge */}
-            <button
+            {!isAdmin && <button
               onClick={() => onSelectTab('notifications')}
-              className={`relative p-2 rounded-xl text-gray-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors ${currentTab === 'notifications' ? 'bg-emerald-100 text-emerald-800' : ''}`}
+              className={`relative p-1.5 sm:p-2 rounded-xl text-gray-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors ${currentTab === 'notifications' ? 'bg-emerald-100 text-emerald-800' : ''}`}
               title="الإشعارات"
-              id="header-notifications-btn"
+              id={isAdmin ? 'admin-new-registrations-notifications-btn' : 'header-notifications-btn'}
             >
               <Bell className="w-5 h-5" />
               {unreadNotificationsCount > 0 && (
@@ -117,12 +108,11 @@ export const Header: React.FC<HeaderProps> = ({
                   {unreadNotificationsCount}
                 </span>
               )}
-            </button>
+            </button>}
 
-            {/* Favorites Icon with Badge */}
-            <button
+            {!isAdmin && <button
               onClick={() => onSelectTab('favorites')}
-              className={`relative p-2 rounded-xl text-gray-600 hover:text-rose-600 hover:bg-rose-50 transition-colors ${currentTab === 'favorites' ? 'bg-rose-50 text-rose-600' : ''}`}
+              className={`relative p-1.5 sm:p-2 rounded-xl text-gray-600 hover:text-rose-600 hover:bg-rose-50 transition-colors ${currentTab === 'favorites' ? 'bg-rose-50 text-rose-600' : ''}`}
               title="المفضلة"
               id="header-favorites-btn"
             >
@@ -132,39 +122,26 @@ export const Header: React.FC<HeaderProps> = ({
                   {favoritesCount}
                 </span>
               )}
-            </button>
+            </button>}
 
-            {/* Account Type Selector Pill */}
-            <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-xl text-xs font-semibold text-amber-900 shadow-2xs">
+            <div className="flex items-center gap-0.5 sm:gap-1.5 bg-amber-50 border border-amber-200 px-1 sm:px-2.5 py-1 rounded-xl text-xs font-semibold text-amber-900 shadow-2xs">
               <span className="text-[10px] text-amber-700 hidden sm:inline">نوع الحساب:</span>
-              <select
-                value={currentAccountType}
-                onChange={(e) => onChangeAccountType(e.target.value as AccountType)}
-                className="bg-transparent font-bold text-emerald-900 focus:outline-none cursor-pointer text-xs"
-                id="account-type-header-select"
-              >
-                <option value="زبون">زبون</option>
-                <option value="صاحب قاعة">صاحب قاعة</option>
-                <option value="مزود خدمة">مزود خدمة</option>
-                <option value="مدير Admin">مدير Admin</option>
-              </select>
-
+              <span className="hidden min-[430px]:inline font-bold text-emerald-900 text-xs" id="account-type-header-label">{currentAccountType}</span>
               {onOpenAuthModal && (
                 <button
                   onClick={onOpenAuthModal}
-                  className="mr-1 text-[10px] bg-amber-200 hover:bg-amber-300 text-amber-950 font-black px-1.5 py-0.5 rounded-lg transition-colors"
-                  title="فتح نافذة تسجيل الدخول والتبديل"
+                  className="sm:mr-1 text-[10px] bg-amber-200 hover:bg-amber-300 text-amber-950 font-black px-1.5 py-0.5 rounded-lg transition-colors"
+                  title="تسجيل الدخول أو تبديل الحساب"
                   id="open-auth-modal-header-btn"
                 >
-                  تبديل
+                  الحساب
                 </button>
               )}
             </div>
 
-            {/* Profile Tab Link */}
             <button
               onClick={() => onSelectTab('profile')}
-              className={`p-2 rounded-xl border transition-all ${
+              className={`p-1.5 sm:p-2 rounded-xl border transition-all shrink-0 ${
                 currentTab === 'profile'
                   ? 'bg-emerald-800 text-white border-emerald-800 shadow-sm'
                   : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-emerald-300'
@@ -175,7 +152,6 @@ export const Header: React.FC<HeaderProps> = ({
               <User className="w-5 h-5" />
             </button>
           </div>
-
         </div>
       </div>
     </header>

@@ -30,16 +30,15 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
           <p className="text-xs text-emerald-100 mt-1">تحديثات حالة الحجز، العروض الحصرية، والردود الإدارية</p>
         </div>
 
-        {unreadCount > 0 && (
           <button
             onClick={onMarkAllAsRead}
-            className="px-3.5 py-2 bg-emerald-800 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl border border-emerald-600 transition-colors flex items-center gap-1 shrink-0"
+            disabled={unreadCount===0}
+            className="px-3.5 py-2 bg-white text-emerald-900 disabled:opacity-50 font-bold text-xs rounded-xl border border-emerald-200 transition-colors flex items-center gap-1 shrink-0"
             id="mark-all-notifications-read-btn"
           >
             <CheckCheck className="w-4 h-4 text-amber-300" />
-            <span>تحديد الكل كتم القراءة</span>
+            <span>{unreadCount>0?'تحديد الكل كمقروء':'تمت قراءة الكل'}</span>
           </button>
-        )}
       </div>
 
       {/* List */}

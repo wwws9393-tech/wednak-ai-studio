@@ -1,0 +1,88 @@
+name: One-time reCAPTCHA lifecycle fix
+
+on:
+  push:
+    branches: [chatgpt-production-hardening]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Retry one-time reCAPTCHA lifecycle fix'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt-production-hardening
+
+      - name: Patch reCAPTCHA lifecycle in auth and guest booking
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def patch_auth():
+            p = Path('src/components/AuthModal.tsx')
+            s = p.read_text()
+            old = "  const confirmationRef = useRef<ConfirmationResult | null>(null);\n  const recaptchaRef = useRef<RecaptchaVerifier | null>(null);"
+            new = "  const confirmationRef = useRef<ConfirmationResult | null>(null);\n  const recaptchaRef = useRef<RecaptchaVerifier | null>(null);\n  const recaptchaContainerRef = useRef<HTMLDivElement | null>(null);"
+            if old not in s: raise SystemExit('Auth refs marker not found')
+            s = s.replace(old, new, 1)
+
+            old = "  useEffect(() => {\n    return () => {\n      recaptchaRef.current?.clear();\n      recaptchaRef.current = null;\n    };\n  }, []);"
+            new = "  const disposeRecaptcha = () => {\n    try { recaptchaRef.current?.clear(); } catch (error) { console.warn('reCAPTCHA clear skipped:', error); }\n    recaptchaRef.current = null;\n    recaptchaContainerRef.current?.remove();\n    recaptchaContainerRef.current = null;\n  };\n\n  useEffect(() => () => disposeRecaptcha(), []);"
+            if old not in s: raise SystemExit('Auth effect marker not found')
+            s = s.replace(old, new, 1)
+
+            old = "    confirmationRef.current = null;\n    recaptchaRef.current?.clear();\n    recaptchaRef.current = null;"
+            new = "    confirmationRef.current = null;\n    disposeRecaptcha();"
+            if old not in s: raise SystemExit('Auth reset marker not found')
+            s = s.replace(old, new, 1)
+
+            old = "  const buildRecaptcha = () => {\n    recaptchaRef.current?.clear();\n    const verifier = new RecaptchaVerifier(auth, 'wednak-recaptcha-container', {\n      size: 'invisible',\n      callback: () => undefined,\n      'expired-callback': () => setErrorMessage('انتهت صلاحية التحقق الأمني. حاول إرسال الرمز مرة أخرى.'),\n    });\n    recaptchaRef.current = verifier;\n    return verifier;\n  };"
+            new = "  const buildRecaptcha = () => {\n    disposeRecaptcha();\n    const container = document.createElement('div');\n    container.id = `wednak-recaptcha-${Date.now()}-${Math.random().toString(36).slice(2)}`;\n    container.style.position = 'fixed';\n    container.style.left = '-10000px';\n    container.style.top = '-10000px';\n    document.body.appendChild(container);\n    recaptchaContainerRef.current = container;\n    const verifier = new RecaptchaVerifier(auth, container, {\n      size: 'invisible',\n      callback: () => undefined,\n      'expired-callback': () => { disposeRecaptcha(); setErrorMessage('انتهت صلاحية التحقق الأمني. حاول إرسال الرمز مرة أخرى.'); },\n    });\n    recaptchaRef.current = verifier;\n    return verifier;\n  };"
+            if old not in s: raise SystemExit('Auth buildRecaptcha marker not found')
+            s = s.replace(old, new, 1)
+
+            old = "      recaptchaRef.current?.clear();\n      recaptchaRef.current = null;"
+            new = "      disposeRecaptcha();"
+            if old not in s: raise SystemExit('Auth catch cleanup marker not found')
+            s = s.replace(old, new, 1)
+            p.write_text(s)
+
+          def patch_booking():
+            p = Path('src/components/BookingModal.tsx')
+            s = p.read_text()
+            old = "  const confirmationRef = useRef<ConfirmationResult | null>(null);\n  const recaptchaRef = useRef<RecaptchaVerifier | null>(null);"
+            new = "  const confirmationRef = useRef<ConfirmationResult | null>(null);\n  const recaptchaRef = useRef<RecaptchaVerifier | null>(null);\n  const recaptchaContainerRef = useRef<HTMLDivElement | null>(null);"
+            if old not in s: raise SystemExit('Booking refs marker not found')
+            s = s.replace(old, new, 1)
+
+            old = "  useEffect(() => () => { recaptchaRef.current?.clear(); recaptchaRef.current = null; }, []);"
+            new = "  const disposeRecaptcha = () => {\n    try { recaptchaRef.current?.clear(); } catch (error) { console.warn('Guest reCAPTCHA clear skipped:', error); }\n    recaptchaRef.current = null;\n    recaptchaContainerRef.current?.remove();\n    recaptchaContainerRef.current = null;\n  };\n\n  useEffect(() => () => disposeRecaptcha(), []);"
+            if old not in s: raise SystemExit('Booking effect marker not found')
+            s = s.replace(old, new, 1)
+
+            old = "    recaptchaRef.current?.clear();\n    const verifier = new RecaptchaVerifier(auth, 'guest-booking-recaptcha', { size: 'invisible', callback: () => undefined });\n    recaptchaRef.current = verifier;\n    confirmationRef.current = await signInWithPhoneNumber(auth, phone, verifier);"
+            new = "    disposeRecaptcha();\n    const container = document.createElement('div');\n    container.id = `guest-booking-recaptcha-${Date.now()}-${Math.random().toString(36).slice(2)}`;\n    container.style.position = 'fixed';\n    container.style.left = '-10000px';\n    container.style.top = '-10000px';\n    document.body.appendChild(container);\n    recaptchaContainerRef.current = container;\n    const verifier = new RecaptchaVerifier(auth, container, { size: 'invisible', callback: () => undefined, 'expired-callback': disposeRecaptcha });\n    recaptchaRef.current = verifier;\n    confirmationRef.current = await signInWithPhoneNumber(auth, phone, verifier);"
+            if old not in s: raise SystemExit('Booking sendGuestOtp marker not found')
+            s = s.replace(old, new, 1)
+            p.write_text(s)
+
+          patch_auth()
+          patch_booking()
+          PY
+
+      - name: Validate build
+        run: |
+          npm install
+          npx tsc --noEmit
+          npm run build
+
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/AuthModal.tsx src/components/BookingModal.tsx
+          git commit -m "Fix reCAPTCHA lifecycle for repeated OTP attempts"
+          git push origin HEAD:chatgpt-production-hardening

@@ -1,19 +1,23 @@
 import React from 'react';
 import { Home, Compass, Calendar, Heart, ShieldAlert, User } from 'lucide-react';
+import { AccountType } from '../types';
 
 interface BottomNavProps {
   currentTab: string;
   onSelectTab: (tab: string) => void;
   favoritesCount: number;
   bookingsCount: number;
+  accountType?: AccountType;
+  unreadNotificationsCount?: number;
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({
   currentTab,
   onSelectTab,
   favoritesCount,
-  bookingsCount,
+  bookingsCount, accountType,
 }) => {
+  if (accountType === 'مدير' || accountType === 'مدير Admin') return null;
   const tabs = [
     { id: 'home', label: 'الرئيسية', icon: Home },
     { id: 'explore', label: 'استكشف', icon: Compass },

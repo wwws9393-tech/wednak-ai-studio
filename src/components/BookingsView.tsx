@@ -1,17 +1,21 @@
 import React, { useState } from 'react';
 import { Calendar, Clock, MapPin, CheckCircle2, XCircle, AlertCircle, Eye, ArrowRight } from 'lucide-react';
 import { Booking, BookingStatus } from '../types';
+import { AccountType } from '../types';
+import { BookingSchedule } from './BookingSchedule';
 
 interface BookingsViewProps {
   bookings: Booking[];
   onSelectBooking: (booking: Booking) => void;
   onSelectTab: (tab: string) => void;
+  accountType?: AccountType;
 }
 
 export const BookingsView: React.FC<BookingsViewProps> = ({
   bookings = [],
   onSelectBooking,
   onSelectTab,
+  accountType,
 }) => {
   const [activeFilter, setActiveFilter] = useState<string>('الكل');
 
@@ -34,10 +38,11 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
         return 'bg-gray-100 text-gray-700';
     }
   };
+  const createdText=(value:string)=>{const date=new Date(value);return Number.isNaN(date.getTime())?'غير معروف':date.toLocaleString('ar-IQ',{year:'numeric',month:'long',day:'numeric',hour:'numeric',minute:'2-digit'});};
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6" id="bookings-view-container">
-      
+
       {/* Title */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-emerald-900 to-emerald-800 p-6 rounded-3xl text-white shadow-md">
         <div>
@@ -58,6 +63,8 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
       </div>
 
       {/* Filter Tabs */}
+      {(accountType==='صاحب قاعة'||accountType==='مزود خدمة')&&<BookingSchedule bookings={bookings}/>}
+
       <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-gray-200">
         {['الكل', 'قيد المراجعة', 'مقبول', 'مرفوض', 'ملغي'].map((filter) => (
           <button
@@ -146,6 +153,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                   عرض التفاصيل <Eye className="w-3.5 h-3.5" />
                 </span>
               </div>
+              <div className="pt-2 border-t border-black text-[11px] font-medium text-black">تاريخ إنشاء الحجز: {createdText(b.createdAt)}</div>
             </div>
           ))}
         </div>

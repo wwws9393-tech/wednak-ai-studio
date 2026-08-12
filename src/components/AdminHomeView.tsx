@@ -1,121 +1,28 @@
-import React from 'react';
-import { ShieldAlert, Users, Building2, Calendar, CheckCircle2, MessageSquare, AlertCircle } from 'lucide-react';
-import { Complaint, UserProfile, Booking } from '../types';
-
-interface AdminHomeViewProps {
-  currentUser: UserProfile;
-  complaints: Complaint[];
-  bookings: Booking[];
-  onUpdateComplaintStatus: (id: string, status: Complaint['status'], adminReply?: string) => void;
-}
-
-export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
-  currentUser = { id: 'admin', name: 'مدير النظام', phone: '07700000000', email: '', city: 'بغداد', accountType: 'مدير Admin' },
-  complaints = [],
-  bookings = [],
-  onUpdateComplaintStatus = (_id: string, _status: Complaint['status'], _reply?: string) => {},
-}) => {
-  const pendingComplaints = complaints.filter((c) => c.status !== 'تمت المعالجة');
-
-  return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8 dir-rtl" id="admin-home-dashboard">
-      
-      {/* Admin Header */}
-      <div className="bg-gradient-to-r from-emerald-950 via-gray-900 to-amber-950 p-6 sm:p-8 rounded-3xl text-white shadow-xl border border-amber-400/20 space-y-4">
-        <span className="bg-amber-400 text-black text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider inline-block">
-          لوحة الإدارة والمتابعة (Admin Home)
-        </span>
-        <h1 className="text-2xl sm:text-3xl font-black text-amber-100">
-          مرحباً، {currentUser.name} (مدير النظام) 🛡️
-        </h1>
-        <p className="text-xs sm:text-sm text-gray-300">
-          متابعة بلاغات وشكاوى المستخدمين، استفسارات الحجوزات، والأداء العام للنظام
-        </p>
-
-        {/* Quick System Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-4 border-t border-white/10">
-          <div className="bg-white/10 p-4 rounded-2xl">
-            <span className="text-xs text-amber-300 font-bold block mb-1">الشكاوى المعلقة</span>
-            <span className="text-2xl font-black text-white">{pendingComplaints.length} بلاغ</span>
-          </div>
-
-          <div className="bg-white/10 p-4 rounded-2xl">
-            <span className="text-xs text-emerald-300 font-bold block mb-1">إجمالي الحجوزات</span>
-            <span className="text-2xl font-black text-white">{bookings.length} حجز</span>
-          </div>
-
-          <div className="bg-white/10 p-4 rounded-2xl">
-            <span className="text-xs text-blue-300 font-bold block mb-1">حالة النظام</span>
-            <span className="text-2xl font-black text-emerald-300">نشط 100%</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Complaints List */}
-      <div className="space-y-4">
-        <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-          <ShieldAlert className="w-5 h-5 text-amber-600" />
-          مركز معالجة الشكاوى والاستفسارات ({complaints.length})
-        </h2>
-
-        <div className="space-y-4">
-          {complaints.map((c) => (
-            <div key={c.id} className="bg-white p-5 rounded-3xl border border-gray-200 shadow-xs space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2">
-                <span className="text-xs font-bold text-emerald-900 bg-emerald-50 px-2.5 py-1 rounded-xl">
-                  {c.id} - {c.userName} ({c.userPhone})
-                </span>
-                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
-                  {c.status}
-                </span>
-              </div>
-
-              <div>
-                <h3 className="text-sm font-bold text-gray-900">{c.subject}</h3>
-                <p className="text-xs text-gray-600 mt-1 bg-gray-50 p-3 rounded-2xl border border-gray-100">
-                  {c.description}
-                </p>
-              </div>
-
-              {c.adminReply ? (
-                <div className="text-xs bg-emerald-50 p-3 rounded-2xl border border-emerald-200 text-emerald-900">
-                  <span className="font-bold">رد الإدارة: </span>
-                  <span>{c.adminReply}</span>
-                </div>
-              ) : (
-                <div className="pt-2 border-t border-gray-100 flex items-center gap-2">
-                  <input
-                    type="text"
-                    id={`admin-reply-input-${c.id}`}
-                    placeholder="اكتب رد الإدارة على الشكوى..."
-                    className="flex-1 px-3 py-1.5 bg-gray-50 rounded-xl border border-gray-300 text-xs text-gray-900 outline-none"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        const val = (e.target as HTMLInputElement).value;
-                        if (val) {
-                          onUpdateComplaintStatus(c.id, 'تمت المعالجة', val);
-                        }
-                      }
-                    }}
-                  />
-                  <button
-                    onClick={() => {
-                      const input = document.getElementById(`admin-reply-input-${c.id}`) as HTMLInputElement;
-                      if (input && input.value) {
-                        onUpdateComplaintStatus(c.id, 'تمت المعالجة', input.value);
-                      }
-                    }}
-                    className="px-4 py-1.5 bg-emerald-800 text-white font-bold text-xs rounded-xl"
-                  >
-                    إرسال الرد
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-
-    </div>
-  );
+import React, { useMemo, useState } from 'react';
+import { Bell, BriefcaseBusiness, Building2, Calendar, CheckCircle2, LayoutDashboard, Search, ShieldAlert, UserRound, Users, XCircle } from 'lucide-react';
+import { Booking, BookingStatus, Complaint, Hall, ServiceProvider, UserProfile } from '../types';
+interface Props { currentUser:UserProfile; users:UserProfile[]; dataErrors?:string[]; complaints:Complaint[]; bookings:Booking[]; halls:Hall[]; providers:ServiceProvider[]; onOpenUser:(u:UserProfile)=>void; onOpenUserId:(id:string)=>void; onBlockUserId:(id:string)=>Promise<void>; onDeleteUser:(u:UserProfile)=>Promise<void>; onOpenHall:(h:Hall)=>void; onOpenProvider:(p:ServiceProvider)=>void; onOpenBooking:(b:Booking)=>void; onUpdateComplaintStatus:(id:string,status:Complaint['status'],reply?:string)=>void; onUpdateBookingStatus:(id:string,status:BookingStatus)=>Promise<void>|void; }
+type Tab='dashboard'|'bookings'|'complaints'|'halls'|'providers'|'customers'|'registrations';
+export const AdminHomeView:React.FC<Props>=({currentUser,users,dataErrors=[],complaints,bookings,halls,providers,onOpenUser,onOpenUserId,onBlockUserId,onDeleteUser,onOpenHall,onOpenProvider,onOpenBooking,onUpdateComplaintStatus,onUpdateBookingStatus})=>{
+ const [tab,setTab]=useState<Tab>('dashboard'); const [search,setSearch]=useState(''); const q=search.trim().toLowerCase();
+ const pendingBookings=bookings.filter(b=>b.status==='قيد المراجعة'||b.status==='pending'); const pendingComplaints=complaints.filter(c=>c.status!=='تمت المعالجة'); const customers=users.filter(u=>!['مدير','مدير Admin','صاحب قاعة','مزود خدمة'].includes(u.accountType));
+ const [seen,setSeen]=useState<string[]>(()=>{try{return JSON.parse(localStorage.getItem(`wednak-admin-registrations-${currentUser.id}`)||'[]')}catch{return[]}});
+ const registrations=useMemo(()=>users.filter(u=>u.id!==currentUser.id).slice(0,100),[users,currentUser.id]); const unread=registrations.filter(u=>!seen.includes(u.id));
+ const openRegistration=(u:UserProfile)=>{const next=Array.from(new Set([...seen,u.id]));setSeen(next);localStorage.setItem(`wednak-admin-registrations-${currentUser.id}`,JSON.stringify(next));onOpenUser(u)};
+ const nav:[Tab,string,any][]=[['dashboard','الرئيسية',LayoutDashboard],['bookings','الحجوزات',Calendar],['complaints','الشكاوى',ShieldAlert],['halls','القاعات',Building2],['providers','مزودو الخدمة',BriefcaseBusiness],['customers','الزبائن',Users]];
+ const cards:[string|number,string,any,Tab][]=[[pendingBookings.length,'حجوزات معلقة',Calendar,'bookings'],[pendingComplaints.length,'شكاوى معلقة',ShieldAlert,'complaints'],[bookings.length,'كل الحجوزات',CheckCircle2,'bookings'],[halls.length,'القاعات',Building2,'halls'],[providers.length,'مزودو الخدمة',BriefcaseBusiness,'providers'],[customers.length,'الزبائن',Users,'customers']];
+ const conflictCount=(b:Booking)=>pendingBookings.filter(x=>x.id!==b.id&&x.itemId===b.itemId&&x.date===b.date&&x.startTime===b.startTime&&x.endTime===b.endTime).length;
+ return <div className="max-w-7xl mx-auto px-4 py-6 space-y-5" dir="rtl">
+ <header className="bg-gradient-to-r from-emerald-950 via-slate-950 to-amber-950 p-6 rounded-3xl text-white flex justify-between items-center"><div><span className="bg-amber-400 text-black text-xs font-black px-3 py-1 rounded-full">لوحة المدير الكاملة</span><h1 className="text-2xl font-black mt-3">مرحباً، {currentUser.name}</h1><p className="text-xs text-gray-300">إدارة النظام والمستخدمين من مكان واحد</p></div><button onClick={()=>setTab('registrations')} className="relative p-3 bg-white/10 rounded-2xl border border-white/20"><Bell className="w-6 h-6 text-amber-300"/>{unread.length>0&&<span className="absolute -top-2 -right-2 bg-rose-500 w-6 h-6 rounded-full text-xs flex items-center justify-center">{unread.length}</span>}</button></header>
+ <nav className="flex gap-2 overflow-x-auto bg-white p-2 rounded-2xl border">{nav.map(([id,label,Icon])=><button key={id} onClick={()=>setTab(id)} className={`px-4 py-2.5 rounded-xl text-xs font-bold flex gap-1.5 shrink-0 ${tab===id?'bg-emerald-800 text-white':'hover:bg-gray-100'}`}><Icon className="w-4 h-4"/>{label}</button>)}</nav>
+ {dataErrors.length>0&&<div className="p-4 bg-rose-50 border border-rose-300 rounded-2xl text-rose-900"><b className="text-sm block">تعذر تحميل بيانات المدير المحمية</b><p className="text-xs mt-1">لم تُحذف الحجوزات أو الحسابات؛ Firebase رفض قراءتها. شغّل قواعد المشروع الجديدة ثم أعد تحميل الصفحة:</p><code className="block mt-2 bg-white p-2 rounded-lg text-xs dir-ltr text-left">npx firebase-tools deploy --only firestore:rules</code></div>}
+ {tab==='dashboard'&&<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">{cards.map(([n,label,Icon,target])=><button key={label} onClick={()=>setTab(target)} className="text-right bg-white border rounded-2xl p-4 hover:border-emerald-500 hover:-translate-y-1 transition-all"><Icon className="w-5 h-5 text-emerald-700"/><b className="text-2xl block mt-2">{n}</b><span className="text-xs text-gray-500">{label}</span></button>)}</div>}
+ {tab!=='dashboard'&&<label className="bg-white border rounded-2xl px-4 py-3 flex gap-2"><Search className="w-4 h-4 text-emerald-700"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="ابحث بالاسم أو الهاتف أو المحافظة..." className="flex-1 outline-none text-xs"/></label>}
+ {tab==='registrations'&&<section className="space-y-3"><div className="flex items-center justify-between gap-3"><h2 className="font-black">التسجيلات الجديدة فقط</h2><button disabled={unread.length===0} onClick={()=>{const next=registrations.map(u=>u.id);setSeen(next);localStorage.setItem(`wednak-admin-registrations-${currentUser.id}`,JSON.stringify(next));}} className="px-3 py-2 bg-emerald-800 text-white disabled:opacity-50 rounded-xl text-xs font-bold">{unread.length>0?'تحديد الكل كمقروء':'تمت قراءة الكل'}</button></div>{registrations.filter(u=>!q||`${u.name} ${u.phone} ${u.city}`.toLowerCase().includes(q)).map(u=><button key={u.id} onClick={()=>openRegistration(u)} className={`w-full p-4 rounded-2xl border flex items-center gap-3 text-right ${seen.includes(u.id)?'bg-white':'bg-emerald-50 border-emerald-300'}`}><div className="w-12 h-12 rounded-full bg-gray-100 overflow-hidden flex items-center justify-center">{u.profileImageUrl?<img src={u.profileImageUrl} className="w-full h-full object-cover"/>:<UserRound/>}</div><div className="flex-1"><b>{u.name}</b><p className="text-xs text-gray-500">{u.accountType} • {u.phone} • {u.city}</p><span className="text-[10px]">{u.createdAt?new Date(u.createdAt).toLocaleString('ar-IQ'):''}</span></div>{!seen.includes(u.id)&&<span className="w-2.5 h-2.5 rounded-full bg-rose-500"/>}</button>)}</section>}
+ {tab==='bookings'&&<section className="space-y-3">{bookings.filter(b=>!q||`${b.itemName} ${b.customerName} ${b.customerPhone}`.toLowerCase().includes(q)).map(b=>{const conflicts=conflictCount(b);return <article key={b.id} role="button" tabIndex={0} onClick={()=>onOpenBooking(b)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();onOpenBooking(b)}}} className="bg-white border rounded-2xl p-4 space-y-2 cursor-pointer hover:border-emerald-500 hover:shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500"><div className="flex justify-between"><div><b>{b.itemName}</b><button onClick={e=>{e.stopPropagation();const u=users.find(u=>u.id===b.requesterId);if(u)onOpenUser(u);else if(b.requesterId)onOpenUserId(b.requesterId)}} className="block text-xs text-emerald-700 underline">{b.customerName} • {b.customerPhone}</button></div><b className="text-xs">{b.status}</b></div><p className="text-xs">{b.date} • {b.startTime||b.timeSlot} - {b.endTime||''}</p><p className="text-[11px] font-bold text-emerald-800">اضغط لعرض جميع تفاصيل الحجز</p>{conflicts>0&&(b.status==='قيد المراجعة'||b.status==='pending')&&<div className="p-2 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">⚠️ يوجد {conflicts} طلب آخر بنفس التاريخ والوقت</div>}{b.cancelledAt&&<div className="p-2 bg-rose-50 rounded-xl text-xs">ألغاه: {b.cancelledByRole} — {b.cancelledByName}، بتاريخ {new Date(b.cancelledAt).toLocaleString('ar-IQ')}</div>}{(b.status==='قيد المراجعة'||b.status==='pending')&&<div className="flex gap-2"><button onClick={e=>{e.stopPropagation();void onUpdateBookingStatus(b.id,'مقبول')}} className="px-3 py-2 bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold">قبول</button><button onClick={e=>{e.stopPropagation();void onUpdateBookingStatus(b.id,'مرفوض')}} className="px-3 py-2 bg-rose-100 text-rose-800 rounded-xl text-xs font-bold">رفض</button></div>}</article>})}</section>}
+ {tab==='complaints'&&<section className="space-y-3">{complaints.filter(c=>!q||`${c.userName} ${c.userPhone} ${c.subject}`.toLowerCase().includes(q)).map(c=><div key={c.id} className="bg-white p-4 rounded-2xl border"><b>{c.subject}</b><p className="text-xs my-2">{c.userName} • {c.description}</p>{!c.adminReply&&<div className="flex gap-2"><input id={`reply-${c.id}`} className="flex-1 border rounded-xl px-3 text-xs"/><button onClick={()=>{const x=document.getElementById(`reply-${c.id}`) as HTMLInputElement;if(x?.value)onUpdateComplaintStatus(c.id,'تمت المعالجة',x.value)}} className="bg-emerald-800 text-white px-3 rounded-xl text-xs">إرسال</button></div>}</div>)}</section>}
+ {tab==='halls'&&<section className="grid md:grid-cols-2 gap-3">{halls.filter(h=>!q||`${h.name} ${h.city}`.toLowerCase().includes(q)).map(h=>{const real=!!h.ownerId&&!h.id.startsWith('demo-')&&!h.ownerId.startsWith('demo-');return <div key={h.id} className="bg-white border rounded-2xl p-3 flex gap-3"><img src={h.profileImageUrl||h.coverImage||h.images?.[0]} className="w-16 h-16 rounded-full object-cover"/><div className="flex-1"><b>{h.name}</b><p className="text-xs">{h.city} • {h.phone}</p><div className="flex gap-2 mt-2"><button onClick={()=>onOpenHall(h)} className="px-3 py-1.5 bg-gray-100 rounded-lg text-[11px] font-bold">عرض القاعة</button>{real?<button onClick={async()=>{if(confirm(`هل تؤكد حظر مالك ${h.name} ومنعه من استخدام التطبيق؟`)){try{await onBlockUserId(h.ownerId!);alert('تم حظر الحساب فعلياً.')}catch(e){alert(e instanceof Error?e.message:'تعذر الحظر')}}}} className="px-3 py-1.5 bg-rose-600 text-white rounded-lg text-[11px] font-bold">حظر</button>:<span className="px-3 py-1.5 bg-gray-100 text-gray-500 rounded-lg text-[10px]">بيانات تجريبية</span>}</div></div></div>})}</section>}
+ {tab==='providers'&&<section className="grid md:grid-cols-2 gap-3">{providers.filter(p=>!q||`${p.name} ${p.city}`.toLowerCase().includes(q)).map(p=>{const real=!!p.ownerId&&!p.id.startsWith('demo-')&&!p.ownerId.startsWith('demo-');return <div key={p.id} className="bg-white border rounded-2xl p-3 flex gap-3"><img src={p.avatar||p.coverImage} className="w-16 h-16 rounded-full object-cover"/><div className="flex-1"><b>{p.name}</b><p className="text-xs">{p.serviceCategory} • {p.city}</p><div className="flex gap-2 mt-2"><button onClick={()=>onOpenProvider(p)} className="px-3 py-1.5 bg-gray-100 rounded-lg text-[11px] font-bold">عرض الصفحة</button>{real?<button onClick={async()=>{if(confirm(`هل تؤكد حظر ${p.name} ومنعه من استخدام التطبيق؟`)){try{await onBlockUserId(p.ownerId!);alert('تم حظر الحساب فعلياً.')}catch(e){alert(e instanceof Error?e.message:'تعذر الحظر')}}}} className="px-3 py-1.5 bg-rose-600 text-white rounded-lg text-[11px] font-bold">حظر</button>:<span className="px-3 py-1.5 bg-gray-100 text-gray-500 rounded-lg text-[10px]">بيانات تجريبية</span>}</div></div></div>})}</section>}
+ {tab==='customers'&&<section className="grid md:grid-cols-2 gap-3">{customers.filter(u=>!q||`${u.name} ${u.phone} ${u.city}`.toLowerCase().includes(q)).map(u=><div key={u.id} className="bg-white border rounded-2xl p-3 flex gap-3 text-right"><button onClick={()=>onOpenUser(u)} className="flex flex-1 gap-3 text-right"><div className="w-14 h-14 bg-gray-100 rounded-full overflow-hidden">{u.profileImageUrl?<img src={u.profileImageUrl} className="w-full h-full object-cover"/>:<UserRound className="m-4"/>}</div><div><b>{u.name}</b><p className="text-xs">{u.phone} • {u.city}</p><span className={`text-[10px] ${u.isBlocked?'text-rose-600':'text-emerald-700'}`}>{u.isBlocked?'محظور':'نشط'}</span></div></button><button onClick={async()=>{if(!confirm(`سيتم حذف ${u.name} وجميع بياناته من التطبيق. هل أنت متأكد؟`))return;try{await onDeleteUser(u);alert('تم حذف الحساب وبياناته من التطبيق.')}catch(error){alert(`فشل الحذف: ${error instanceof Error?error.message:String(error)}`)}}} className="self-center px-3 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold">حذف</button></div>)}</section>}
+ </div>;
 };

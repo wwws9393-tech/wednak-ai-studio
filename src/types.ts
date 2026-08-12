@@ -12,6 +12,9 @@ export interface Hall {
   rating: number;
   reviewsCount: number;
   images: string[];
+  coverImage?: string;
+  profileImageUrl?: string;
+  phone?: string;
   description: string;
   deposit: number;
   depositFormatted: string;
@@ -20,7 +23,7 @@ export interface Hall {
   isFeatured?: boolean;
 }
 
-export type ServiceCategory = 'تصوير وفيديو' | 'تزيين وكوشة' | 'فرقة وسنترال' | 'سيارات زفاف' | 'صالون ومكياج عرائس' | 'ضيافة وبوفيه';
+export type ServiceCategory = 'تصوير وفيديو' | 'تزيين وكوشة' | 'فرقة وسنترال' | 'دي جي وموسيقى' | 'زهور وباقات عرائس' | 'سيارات زفاف' | 'صالون ومكياج عرائس' | 'ضيافة وبوفيه';
 
 export interface ServiceProvider {
   id: string;
@@ -36,6 +39,7 @@ export interface ServiceProvider {
   avatar: string;
   coverImage: string;
   portfolio: string[];
+  portfolioDescriptions?: Record<string,string>;
   description: string;
   phone: string;
   isVerified?: boolean;
@@ -70,7 +74,7 @@ export interface Booking {
   itemName: string;
   itemLocation: string;
   itemImage: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   timeSlot: string;
   startTime?: string;
   endTime?: string;
@@ -94,6 +98,15 @@ export interface Booking {
   targetType?: 'hall' | 'provider';
   hallId?: string | null;
   serviceProviderId?: string | null;
+  cancelledById?: string;
+  cancelledByRole?: 'زبون' | 'صاحب قاعة' | 'مزود خدمة' | 'مدير';
+  cancelledByName?: string;
+  cancelledAt?: string;
+  cancellationReason?: string;
+  paymentStatus?: 'بانتظار الدفع' | 'مدفوع تجريبياً' | 'مدفوع' | 'فشل' | 'مسترجع';
+  paymentMethod?: 'زين كاش' | 'Qi Card' | 'الدفع لاحقاً';
+  paymentReference?: string;
+  paidAt?: string;
 }
 
 export interface Complaint {
@@ -135,6 +148,12 @@ export interface UserProfile {
   profileCompleted?: boolean;
   hallName?: string;
   serviceCategory?: string;
+  profileImageUrl?: string;
+  coverImageUrl?: string;
   createdAt?: string;
   updatedAt?: string;
+  isBlocked?: boolean;
+  blockedAt?: string;
+  blockedBy?: string;
+  blockReason?: string;
 }

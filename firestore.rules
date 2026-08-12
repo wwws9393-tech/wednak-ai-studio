@@ -1,57 +1,168 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Helper functions
-    function isAuthenticated() {
+    function signedIn() {
       return request.auth != null;
     }
 
-    // Users Collection
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accountType in ['مدير', 'مدير Admin'];
+    }
+
+    function validUserRole(role) {
+      return role in ['زبون', 'صاحب قاعة', 'مزود خدمة'];
+    }
+
+    function pendingStatus(status) {
+      return status in ['قيد المراجعة', 'pending'];
+    }
+
+    function acceptedStatus(status) {
+      return status in ['مقبول', 'accepted'];
+    }
+
+    function cancelledStatus(status) {
+      return status in ['ملغي', 'cancelled'];
+    }
+
+    function rejectedStatus(status) {
+      return status in ['مرفوض', 'rejected'];
+    }
+
+    function immutableBookingIdentity() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'status', 'updatedAt', 'cancelledAt', 'cancelledById', 'cancelledByRole',
+        'cancelledByName', 'cancellationReason', 'paymentStatus', 'paymentMethod',
+        'paymentReference', 'paidAt'
+      ]);
+    }
+
+    function requesterCanTransition() {
+      return resource.data.requesterId == request.auth.uid
+        && (pendingStatus(resource.data.status) || acceptedStatus(resource.data.status))
+        && cancelledStatus(request.resource.data.status);
+    }
+
+    function targetCanTransition() {
+      return resource.data.targetOwnerId == request.auth.uid
+        && (
+          (pendingStatus(resource.data.status)
+            && (acceptedStatus(request.resource.data.status) || rejectedStatus(request.resource.data.status)))
+          ||
+          (acceptedStatus(resource.data.status)
+            && (cancelledStatus(request.resource.data.status) || request.resource.data.status == 'completed'))
+        );
+    }
+
     match /users/{userId} {
-      allow read: if true;
-      allow create, update: if true;
-      allow delete: if true;
-      
-      // User-nested Favorites Collection
+      allow read: if signedIn();
+      allow create: if isSelf(userId)
+        && request.resource.data.id == userId
+        && validUserRole(request.resource.data.accountType)
+        && !exists(/databases/$(database)/documents/deletedUsers/$(userId));
+      allow update: if isAdmin() || (isSelf(userId)
+        && request.resource.data.id == userId
+        && request.resource.data.accountType == resource.data.accountType
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isBlocked','blockedAt','blockedBy','blockReason']));
+      allow delete: if isSelf(userId) || isAdmin();
+
       match /favorites/{favoriteId} {
-        allow read, write: if true;
+        allow read, create, update, delete: if isSelf(userId) || isAdmin();
       }
     }
 
-    // Root Favorites Collection
+    match /deletedUsers/{userId} {
+      allow read, write: if isAdmin();
+    }
+
     match /favorites/{favoriteId} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
 
-    // Bookings Collection
     match /bookings/{bookingId} {
-      allow read, write: if true;
+      allow create: if signedIn()
+        && request.resource.data.requesterId == request.auth.uid
+        && request.resource.data.customerId == request.auth.uid
+        && request.resource.data.requesterId != request.resource.data.targetOwnerId
+        && pendingStatus(request.resource.data.status);
+
+      allow read: if signedIn()
+        && (resource.data.requesterId == request.auth.uid
+          || resource.data.targetOwnerId == request.auth.uid
+          || isAdmin());
+
+      allow update: if signedIn()
+        && immutableBookingIdentity()
+        && (requesterCanTransition() || targetCanTransition() || isAdmin());
+
+      allow delete: if isAdmin();
     }
 
-    // Halls Collection
+    // Privacy-safe public availability. No customer name/phone/requester ID is stored here.
+    match /bookingLocks/{lockId} {
+      allow read: if true;
+      allow create: if signedIn()
+        && (request.resource.data.targetOwnerId == request.auth.uid || isAdmin())
+        && request.resource.data.keys().hasOnly([
+          'bookingId', 'itemId', 'date', 'minute', 'targetOwnerId', 'createdAt'
+        ]);
+      allow update: if false;
+      allow delete: if signedIn() && (
+        resource.data.targetOwnerId == request.auth.uid
+        || isAdmin()
+        || (
+          exists(/databases/$(database)/documents/bookings/$(resource.data.bookingId))
+          && get(/databases/$(database)/documents/bookings/$(resource.data.bookingId)).data.requesterId == request.auth.uid
+        )
+      );
+    }
+
     match /halls/{hallId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update: if signedIn()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == resource.data.ownerId;
+      allow delete: if signedIn() && (resource.data.ownerId == request.auth.uid || isAdmin());
     }
 
-    // Service Providers Collection
     match /serviceProviders/{providerId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update: if signedIn()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == resource.data.ownerId;
+      allow delete: if signedIn() && (resource.data.ownerId == request.auth.uid || isAdmin());
     }
 
-    // Posts Collection
     match /posts/{postId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.authorId == request.auth.uid;
+      allow update: if signedIn()
+        && resource.data.authorId == request.auth.uid
+        && request.resource.data.authorId == resource.data.authorId;
+      allow delete: if signedIn() && (resource.data.authorId == request.auth.uid || isAdmin());
     }
 
-    // Offers Collection
     match /offers/{offerId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update: if signedIn()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == resource.data.ownerId;
+      allow delete: if signedIn() && (resource.data.ownerId == request.auth.uid || isAdmin());
     }
 
-    // Complaints Collection
     match /complaints/{complaintId} {
-      allow read, write: if true;
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow update, delete: if isAdmin();
     }
   }
 }

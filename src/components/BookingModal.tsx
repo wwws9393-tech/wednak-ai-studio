@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { X, Calendar, Clock, Users, Phone, User, FileText, CheckCircle, AlertTriangle, Sparkles, ShieldCheck, AlertCircle, KeyRound, ArrowRight, ShieldAlert, Check } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { X, Calendar, Clock, Users, Phone, User, FileText, CheckCircle, AlertTriangle, Sparkles, ShieldCheck, AlertCircle, KeyRound, ArrowRight, CreditCard, WalletCards } from 'lucide-react';
+import { ConfirmationResult, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 import { Hall, ServiceProvider, UserProfile, Booking } from '../types';
-import { findUserByPhoneFromFirestore, saveUserToFirestore } from '../data/usersDatabase';
-import { ensureFirebaseAuth } from '../lib/firebase';
+import { auth, fetchUserFromFirestore, saveUserToFirestore, subscribeAvailability } from '../lib/firebase';
 
 interface BookingModalProps {
   item: { type: 'hall'; data: Hall } | { type: 'provider'; data: ServiceProvider } | null;
@@ -12,499 +12,244 @@ interface BookingModalProps {
   bookings?: Booking[];
   onLoginSuccess?: (userDoc: UserProfile) => void;
   onSubmitBooking: (bookingData: {
-    itemType: 'hall' | 'provider';
-    itemId: string;
-    itemName: string;
-    itemLocation: string;
-    itemImage: string;
-    date: string;
-    timeSlot: string;
-    guests?: number;
-    totalPrice: number;
-    depositAmount: number;
-    notes: string;
-    customerName: string;
-    customerPhone: string;
-    customerId: string;
-    ownerId?: string;
+    itemType: 'hall' | 'provider'; itemId: string; itemName: string; itemLocation: string; itemImage: string;
+    date: string; timeSlot: string; startTime?: string; endTime?: string; guests?: number;
+    totalPrice: number; depositAmount: number; notes: string; customerName: string; customerPhone: string;
+    customerId: string; ownerId?: string; requesterAccountType?: string; paymentStatus?: Booking['paymentStatus']; paymentMethod?: Booking['paymentMethod']; paymentReference?: string;
   }) => Promise<void> | void;
 }
 
-export const BookingModal: React.FC<BookingModalProps> = ({
-  item,
-  isOpen,
-  onClose,
-  currentUser,
-  bookings = [],
-  onLoginSuccess,
-  onSubmitBooking,
-}) => {
-  if (!isOpen || !item) return null;
+type PeriodKey = 'morning' | 'evening' | 'night';
+type Period = { key: PeriodKey; label: string; start: number; end: number };
+const PERIODS: Period[] = [
+  { key: 'morning', label: 'صباحي', start: 10, end: 14 },
+  { key: 'evening', label: 'مسائي', start: 18, end: 23 },
+  { key: 'night', label: 'ليلي', start: 23, end: 26 },
+];
 
-  const isHall = item.type === 'hall';
-  const hallData = isHall ? (item.data as Hall) : null;
-  const providerData = !isHall ? (item.data as ServiceProvider) : null;
-  const itemId = item.data.id;
+function hourToTime(hour: number): string {
+  const normalized = hour % 24;
+  return `${String(normalized).padStart(2, '0')}:00`;
+}
 
-  // Booking details state
-  const [bookingDate, setBookingDate] = useState(() => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 7);
-    return tomorrow.toISOString().split('T')[0];
-  });
+function hourLabel(hour: number): string {
+  const h = hour % 24;
+  const suffix = h < 12 ? 'ص' : 'م';
+  const display = h % 12 || 12;
+  return `${display}:00 ${suffix}`;
+}
 
-  const [timeSlot, setTimeSlot] = useState('مسائي (6:00 م - 11:00 م)');
-  const [guestsCount, setGuestsCount] = useState(hallData ? Math.min(300, hallData.capacity) : 100);
-  const [customerName, setCustomerName] = useState(currentUser.isGuest ? '' : currentUser.name || '');
-  const [customerPhone, setCustomerPhone] = useState(currentUser.isGuest ? '' : currentUser.phone || '');
+function minutesForRange(startTime: string, endTime: string): number[] {
+  const toMinutes = (time: string) => { const [h, m] = time.split(':').map(Number); return h * 60 + m; };
+  const start = toMinutes(startTime);
+  let end = toMinutes(endTime);
+  if (end <= start) end += 1440;
+  const result: number[] = [];
+  for (let minute = Math.floor(start / 30) * 30; minute < end; minute += 30) result.push(minute);
+  return result;
+}
+
+function toEnglishDigits(value: string): string {
+  const ar = '٠١٢٣٤٥٦٧٨٩', fa = '۰۱۲۳۴۵۶۷۸۹';
+  return value.split('').map((c) => {
+    const a = ar.indexOf(c); if (a >= 0) return String(a);
+    const f = fa.indexOf(c); return f >= 0 ? String(f) : c;
+  }).join('');
+}
+
+function normalizeIraqiPhone(raw: string): string {
+  let value = toEnglishDigits(raw).trim().replace(/[\s()-]/g, '');
+  if (value.startsWith('00964')) value = `+964${value.slice(5)}`;
+  if (/^07\d{9}$/.test(value)) return `+964${value.slice(1)}`;
+  if (/^7\d{9}$/.test(value)) return `+964${value}`;
+  if (/^\+9647\d{9}$/.test(value)) return value;
+  throw new Error('أدخل رقم موبايل عراقي صحيح مثل 07701234567.');
+}
+
+
+export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClose, currentUser, onLoginSuccess, onSubmitBooking }) => {
+  const [bookingDate, setBookingDate] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().split('T')[0]; });
+  const [selectedPeriod, setSelectedPeriod] = useState<PeriodKey>('evening');
+  const [startTime, setStartTime] = useState('18:00');
+  const [endTime, setEndTime] = useState('23:00');
+  const [guestsCount, setGuestsCount] = useState(100);
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
   const [notes, setNotes] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
-
-  // Guest Conversion OTP Flow State
-  const [guestStep, setGuestStep] = useState<'details' | 'otp_form'>('details');
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpCode, setOtpCode] = useState('123456');
+  const [guestStep, setGuestStep] = useState<'details' | 'otp_form' | 'payment'>('details');
+  const [bookingUser,setBookingUser]=useState<UserProfile|null>(null);
+  const [paymentMethod,setPaymentMethod]=useState<Booking['paymentMethod']>('زين كاش');
+  const [otpCode, setOtpCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [busyMinutes, setBusyMinutes] = useState<number[]>([]);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const confirmationRef = useRef<ConfirmationResult | null>(null);
+  const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
+  const recaptchaContainerRef = useRef<HTMLDivElement | null>(null);
 
-  const totalPrice = isHall ? hallData!.price : providerData!.priceStart;
-  const depositAmount = isHall ? hallData!.deposit : Math.round(providerData!.priceStart * 0.2);
+  useEffect(() => {
+    if (!isOpen) return;
+    setCustomerName(currentUser.isGuest ? '' : currentUser.name || '');
+    setCustomerPhone(currentUser.isGuest ? '' : currentUser.phone || '');
+    setGuestStep('details'); setOtpCode(''); setErrorMsg('');
+  }, [isOpen, currentUser.id, currentUser.isGuest, currentUser.name, currentUser.phone]);
 
-  // Check if target owner is current user
+  useEffect(() => {
+    if (!isOpen || !item?.data.id || !bookingDate) { setBusyMinutes([]); return; }
+    setAvailabilityLoading(true);
+    const unsubscribe = subscribeAvailability(item.data.id, bookingDate, (minutes) => {
+      setBusyMinutes(minutes); setAvailabilityLoading(false);
+    });
+    return unsubscribe;
+  }, [isOpen, item?.data.id, bookingDate]);
+
+  const disposeRecaptcha = () => {
+    try { recaptchaRef.current?.clear(); } catch (error) { console.warn('Guest reCAPTCHA clear skipped:', error); }
+    recaptchaRef.current = null;
+    recaptchaContainerRef.current?.remove();
+    recaptchaContainerRef.current = null;
+  };
+
+  useEffect(() => () => disposeRecaptcha(), []);
+
+  const selectedPeriodConfig = useMemo(() => PERIODS.find((p) => p.key === selectedPeriod) || PERIODS[1], [selectedPeriod]);
+  const busySet = useMemo(() => new Set(busyMinutes), [busyMinutes]);
+  const selectedMinutes = useMemo(() => minutesForRange(startTime, endTime), [startTime, endTime]);
+  const selectedBooked = selectedMinutes.some((minute) => busySet.has(minute));
+  const timeSlot = `${selectedPeriodConfig.label} (${hourLabel(Number(startTime.slice(0, 2)))} - ${hourLabel(Number(endTime.slice(0, 2)) || 24)})`;
+  const startOptions = Array.from({ length: selectedPeriodConfig.end - selectedPeriodConfig.start }, (_, i) => selectedPeriodConfig.start + i);
+  const selectedStartHour = Number(startTime.slice(0, 2)) + (selectedPeriod === 'night' && Number(startTime.slice(0, 2)) < 6 ? 24 : 0);
+  const endOptions = Array.from({ length: selectedPeriodConfig.end - selectedStartHour }, (_, i) => selectedStartHour + i + 1);
+
+  const choosePeriod = (period: Period) => {
+    setSelectedPeriod(period.key);
+    setStartTime(hourToTime(period.start));
+    setEndTime(hourToTime(period.end));
+  };
+
+  if (!isOpen || !item) return null;
+  const isHall = item.type === 'hall';
+  const hall = isHall ? item.data as Hall : null;
+  const provider = !isHall ? item.data as ServiceProvider : null;
   const targetOwnerId = item.data.ownerId;
-  const isSelfBooking = !currentUser.isGuest && currentUser.id === targetOwnerId;
+  const totalPrice = isHall ? hall!.price : provider!.priceStart;
+  const depositAmount = isHall ? hall!.deposit : Math.round(provider!.priceStart * 0.2);
+  const effectiveGuests = Math.min(Math.max(guestsCount, 1), hall?.capacity || 100);
+  const isSelfBooking = !currentUser.isGuest && !!targetOwnerId && currentUser.id === targetOwnerId;
 
-  // Check which time slots are accepted for this item on the chosen date
-  const isSlotBooked = (slot: string) => {
-    return bookings.some(
-      (b) =>
-        b.itemId === itemId &&
-        b.date === bookingDate &&
-        b.timeSlot === slot &&
-        (b.status === 'مقبول' || b.status === 'accepted')
-    );
+  const submitBooking = async (user: UserProfile) => {
+    if (!targetOwnerId) throw new Error('بيانات مالك القاعة أو مزود الخدمة غير مكتملة.');
+    if (user.id === targetOwnerId) throw new Error('لا يمكنك حجز قاعتك أو خدمتك الخاصة.');
+    if (selectedBooked) throw new Error('هذا الموعد محجوز. اختر فترة أو تاريخاً آخر.');
+    await onSubmitBooking({
+      itemType: item.type, itemId: item.data.id, itemName: item.data.name, itemLocation: item.data.location,
+      itemImage: isHall ? (hall!.coverImage || hall!.images[0] || '') : (provider!.avatar || provider!.coverImage || ''),
+      date: bookingDate, timeSlot, startTime, endTime,
+      guests: isHall ? effectiveGuests : undefined, totalPrice, depositAmount, notes: notes.trim(),
+      customerName: user.name || customerName.trim(), customerPhone: user.phone || customerPhone,
+      customerId: user.id, ownerId: targetOwnerId, requesterAccountType: user.accountType,
+      paymentStatus: 'بانتظار الدفع', paymentMethod, paymentReference:`PAY-${Date.now().toString().slice(-8)}`,
+    });
   };
 
-  const isSelectedSlotBooked = isSlotBooked(timeSlot);
-
-  // Direct Submission handler for Authenticated Users
-  const handleFinalBookingSubmit = async (authenticatedUser: UserProfile) => {
-    setIsLoading(true);
-    // 1. Anti-Self Booking Guard
-    if (authenticatedUser.id === targetOwnerId) {
-      setErrorMsg('عذراً! لا يمكنك حجز قناتك أو حسابك الخاص كصاحب قاعة/مزود خدمة.');
-      setGuestStep('details');
-      setIsLoading(false);
-      return;
-    }
-
-    // 2. Double-Booking Guard
-    if (isSelectedSlotBooked) {
-      setErrorMsg('عذراً، هذا الموعد محجوز بالكامل ومأكود لهذا اليوم. يرجى اختيار تاريخ أو فترة زمنية أخرى.');
-      setGuestStep('details');
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      await onSubmitBooking({
-        itemType: item.type,
-        itemId: item.data.id,
-        itemName: item.data.name,
-        itemLocation: item.data.location,
-        itemImage: isHall ? hallData!.images[0] : providerData!.coverImage,
-        date: bookingDate,
-        timeSlot,
-        guests: isHall ? guestsCount : undefined,
-        totalPrice,
-        depositAmount,
-        notes,
-        customerName: authenticatedUser.name || customerName,
-        customerPhone: authenticatedUser.phone || customerPhone,
-        customerId: authenticatedUser.id,
-        ownerId: targetOwnerId,
-      });
-
-      onClose();
-    } catch (err: any) {
-      setErrorMsg(err.message || 'حدث خطأ أثناء حفظ الحجز في Firestore');
-    } finally {
-      setIsLoading(false);
-    }
+  const sendGuestOtp = async () => {
+    if (!customerName.trim()) throw new Error('اكتب اسمك لإكمال الحجز.');
+    const phone = normalizeIraqiPhone(customerPhone);
+    disposeRecaptcha();
+    const container = document.createElement('div');
+    container.id = `guest-booking-recaptcha-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    container.style.position = 'fixed';
+    container.style.left = '-10000px';
+    container.style.top = '-10000px';
+    document.body.appendChild(container);
+    recaptchaContainerRef.current = container;
+    const verifier = new RecaptchaVerifier(auth, container, { size: 'invisible', callback: () => undefined, 'expired-callback': disposeRecaptcha });
+    recaptchaRef.current = verifier;
+    confirmationRef.current = await signInWithPhoneNumber(auth, phone, verifier);
+    setCustomerPhone(phone); setGuestStep('otp_form');
   };
 
-  // Main Form Submit Handler
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg('');
-
-    if (isSelfBooking) {
-      setErrorMsg('لا يمكنك حجز قناتك أو حسابك الخاص كصاحب قاعة/مزود خدمة.');
-      return;
-    }
-
-    if (isSelectedSlotBooked) {
-      setErrorMsg('عذراً، هذا الموعد محجوز بالكامل ومأكود لهذا اليوم. يرجى اختيار تاريخ أو فترة زمنية أخرى.');
-      return;
-    }
-
-    // If Guest -> Move to Phone & OTP Verification Step
-    if (currentUser.isGuest) {
-      if (!customerName.trim() || !customerPhone.trim()) {
-        setErrorMsg('يرجى إدخال اسمك ورقم هاتفك العراقي لإرسال رمز التحقق OTP.');
-        return;
-      }
-      setGuestStep('otp_form');
-      setOtpSent(true);
-      return;
-    }
-
-    // Non-guest logged in user
-    if (!customerName.trim() || !customerPhone.trim() || !bookingDate) {
-      setErrorMsg('الرجاء كتابة الاسم الكامل ورقم الهاتف بشكل صحيح.');
-      return;
-    }
-
-    await handleFinalBookingSubmit(currentUser);
+    e.preventDefault(); setErrorMsg('');
+    if (!bookingDate) return setErrorMsg('اختر تاريخ الحجز.');
+    if (availabilityLoading) return setErrorMsg('انتظر حتى يكتمل فحص المواعيد.');
+    if (isSelfBooking) return setErrorMsg('لا يمكنك حجز قاعتك أو خدمتك الخاصة.');
+    if (selectedBooked) return setErrorMsg('هذا الموعد محجوز.');
+    setIsLoading(true);
+    try {
+      if (currentUser.isGuest) await sendGuestOtp();
+      else { setBookingUser(currentUser); setGuestStep('payment'); }
+    } catch (err: any) { console.error('Booking failed:', err); const code = err?.code || ''; const msg = code === 'auth/operation-not-allowed' ? 'تسجيل الدخول برقم الهاتف غير مفعّل في Firebase. فعّل Phone provider من Firebase Authentication.' : code === 'auth/invalid-app-credential' || code === 'auth/captcha-check-failed' ? 'فشل تحقق reCAPTCHA. تأكد أن localhost مضاف إلى Authorized domains في Firebase Authentication.' : code === 'auth/too-many-requests' ? 'تم إرسال محاولات كثيرة. انتظر قليلاً ثم حاول مجدداً.' : code === 'auth/invalid-phone-number' ? 'رقم الهاتف غير صحيح. اكتب 11 رقماً عراقياً يبدأ بـ 07.' : (err instanceof Error ? err.message : 'تعذر تنفيذ الحجز.'); setErrorMsg(msg); }
+    finally { setIsLoading(false); }
   };
 
-  // Handle Guest OTP Verification
-  const handleVerifyGuestOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (otpCode !== '123456') {
-      setErrorMsg('رمز التحقق غير صحيح. الرمز الافتراضي للتجربة هو 123456');
-      return;
-    }
-
+  const verifyGuestOtp = async (e: React.FormEvent) => {
+    e.preventDefault(); setErrorMsg('');
+    if (!confirmationRef.current) return setErrorMsg('أعد إرسال رمز التحقق أولاً.');
+    const code = toEnglishDigits(otpCode);
+    if (!/^\d{6}$/.test(code)) return setErrorMsg('رمز التحقق يجب أن يتكون من 6 أرقام.');
     setIsLoading(true);
-    setErrorMsg('');
-
     try {
-      const cleanPhone = customerPhone.trim();
-      const firebaseUser = await ensureFirebaseAuth();
-
-      // Look up if user already exists with this phone!
-      let userDoc = await findUserByPhoneFromFirestore(cleanPhone);
-
-      if (!userDoc) {
-        // Create new user with Guest Conversion flags
-        const realUid = firebaseUser.uid;
-        userDoc = {
-          id: realUid,
-          name: customerName.trim(),
-          phone: cleanPhone,
-          email: `${realUid}@wednak.app`,
-          city: 'بغداد',
-          accountType: 'زبون',
-          isGuestConverted: true,
-          profileCompleted: false,
-          isGuest: false,
-        };
-        await saveUserToFirestore(userDoc);
-      } else {
-        // Updated name if provided
-        if (customerName.trim() && userDoc.name !== customerName.trim()) {
-          userDoc.name = customerName.trim();
-          await saveUserToFirestore(userDoc);
-        }
+      const credential = await confirmationRef.current.confirm(code);
+      let profile = await fetchUserFromFirestore(credential.user.uid);
+      if (!profile) {
+        profile = await saveUserToFirestore({ id: credential.user.uid, name: customerName.trim(), phone: customerPhone, email: '', city: currentUser.city || 'بغداد', accountType: 'زبون', isGuest: false, isGuestConverted: true, profileCompleted: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
       }
-
-      // Log in converted user
-      if (onLoginSuccess) {
-        onLoginSuccess(userDoc);
-      }
-
-      // Submit booking with real User ID!
-      await handleFinalBookingSubmit(userDoc);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'حدث خطأ أثناء التحقق من الرمز وتحويل حساب الضيف.');
-      setIsLoading(false);
-    }
+      onLoginSuccess?.(profile);
+      setBookingUser(profile); setGuestStep('payment');
+    } catch (err) { console.error('OTP/booking failed:', err); setErrorMsg(err instanceof Error ? err.message : 'تعذر التحقق أو إنشاء الحجز.'); }
+    finally { setIsLoading(false); }
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto" id="booking-modal-overlay">
-      <div className="bg-white rounded-3xl max-w-lg w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-amber-100 flex flex-col justify-between my-auto animate-in fade-in zoom-in-95 duration-200">
-        
-        {/* Header */}
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 overflow-y-auto">
+      <div className="bg-white rounded-3xl max-w-lg w-full max-h-[92vh] overflow-y-auto shadow-2xl my-auto">
+        <div id="guest-booking-recaptcha" />
         <div className="p-4 bg-gradient-to-r from-emerald-800 to-emerald-900 text-white flex items-center justify-between rounded-t-3xl">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-amber-300" />
-            <div>
-              <h2 className="text-base font-bold">
-                {currentUser.isGuest ? 'أكمل حجزك كضيف (تأكيد السريع)' : 'طلب حجز جديد'}
-              </h2>
-              <p className="text-xs text-amber-200">{item.data.name}</p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
-            id="close-booking-modal-btn"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex gap-2"><Sparkles className="w-5 h-5 text-amber-300"/><div><h2 className="text-base font-bold">{currentUser.isGuest ? 'أكمل حجزك كضيف' : 'طلب حجز جديد'}</h2><p className="text-xs text-amber-200">{item.data.name}</p></div></div>
+          <button onClick={onClose} className="p-1.5 rounded-full bg-white/10"><X className="w-5 h-5"/></button>
         </div>
+        {isSelfBooking && <div className="m-4 p-3 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs flex gap-2"><AlertTriangle className="w-5 h-5"/>لا يمكنك حجز نفسك.</div>}
+        {errorMsg && <div className="mx-4 mt-3 p-3 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs flex gap-2"><AlertCircle className="w-4 h-4"/>{errorMsg}</div>}
 
-        {/* Self Booking Alert Warning */}
-        {isSelfBooking && (
-          <div className="m-4 p-3 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-2 text-rose-800 text-xs font-semibold">
-            <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
-            <span>تنبيه: لا يجوز حجز قاعتك أو خدماتك بنفسك! يرجى تبديل الحساب للزبون للقيام بالتجربة.</span>
-          </div>
-        )}
-
-        {errorMsg && (
-          <div className="mx-4 mt-3 p-3 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs font-semibold flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-            <span>{errorMsg}</span>
-          </div>
-        )}
-
-        {/* STEP 1: Details Entry */}
-        {guestStep === 'details' && (
-          <form onSubmit={handleSubmit} className="p-5 space-y-4">
-            
-            {/* Booking Summary Box */}
-            <div className="p-3 bg-amber-50/60 rounded-2xl border border-amber-200/80 flex items-center justify-between text-xs">
-              <div>
-                <span className="text-gray-600 block">العربون المطلوب للتأكيد:</span>
-                <span className="text-base font-black text-amber-900">{depositAmount.toLocaleString()} د.ع</span>
-              </div>
-              <div className="text-left">
-                <span className="text-gray-600 block">إجمالي السعر:</span>
-                <span className="text-sm font-bold text-emerald-800">{totalPrice.toLocaleString()} د.ع</span>
-              </div>
-            </div>
-
-            {/* Date Selector */}
-            <div>
-              <label className="text-xs font-bold text-gray-800 block mb-1 flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5 text-emerald-700" />
-                تاريخ المناسبة:
-              </label>
-              <input
-                type="date"
-                value={bookingDate}
-                onChange={(e) => setBookingDate(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
-                className="w-full px-3 py-2.5 rounded-xl border border-gray-300 text-xs font-semibold text-gray-900 focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 outline-none"
-                required
-                id="booking-date-input"
-              />
-            </div>
-
-            {/* Time Slot Picker */}
-            <div>
-              <label className="text-xs font-bold text-gray-800 block mb-1 flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5 text-emerald-700" />
-                الفترة الزمنية للحجز:
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                {[
-                  'صباحي (10:00 ص - 2:00 ظ)',
-                  'مسائي (6:00 م - 11:00 م)',
-                  'ليلي سهرة (11:00 م - 2:00 ص)'
-                ].map((slot) => {
-                  const booked = isSlotBooked(slot);
-                  const isSelected = timeSlot === slot;
-                  return (
-                    <button
-                      key={slot}
-                      type="button"
-                      onClick={() => setTimeSlot(slot)}
-                      className={`px-2.5 py-2 rounded-xl text-[11px] font-bold border transition-all flex flex-col items-center justify-center gap-0.5 ${
-                        booked
-                          ? 'bg-rose-50 text-rose-800 border-rose-300'
-                          : isSelected
-                          ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
-                          : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-emerald-300'
-                      }`}
-                      id={`slot-${slot}`}
-                    >
-                      <span>{slot.split(' ')[0]}</span>
-                      {booked ? (
-                        <span className="text-[9px] bg-rose-200 text-rose-900 px-1.5 py-0.2 rounded font-black">
-                          محجوز مؤكد
-                        </span>
-                      ) : (
-                        <span className="text-[9px] opacity-80">{slot.split(' ')[1]}</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-              {isSelectedSlotBooked && (
-                <p className="text-[11px] text-rose-600 font-bold mt-1.5 flex items-center gap-1">
-                  <AlertCircle className="w-3.5 h-3.5" />
-                  هذا الموعد محجوز في هذا التاريخ! اختر فترة أخرى أو غير التاريخ.
-                </p>
-              )}
-            </div>
-
-            {/* Guests Count (If Hall) */}
-            {isHall && hallData && (
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="text-xs font-bold text-gray-800 flex items-center gap-1">
-                    <Users className="w-3.5 h-3.5 text-emerald-700" />
-                    عدد الضيوف المتوقع:
-                  </label>
-                  <span className="text-xs font-black text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200">
-                    {guestsCount} شخص
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={50}
-                  max={hallData.capacity}
-                  step={10}
-                  value={guestsCount}
-                  onChange={(e) => setGuestsCount(Number(e.target.value))}
-                  className="w-full accent-emerald-700 cursor-pointer"
-                  id="guests-count-slider"
-                />
-              </div>
-            )}
-
-            {/* Customer Details Inputs */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-              <div>
-                <label className="text-xs font-bold text-gray-800 block mb-1 flex items-center gap-1">
-                  <User className="w-3.5 h-3.5 text-emerald-700" />
-                  الاسم الكامل:
-                </label>
-                <input
-                  type="text"
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="أدخل اسمك الكامل"
-                  className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs text-gray-900 focus:ring-2 focus:ring-emerald-600 outline-none"
-                  required
-                  id="booking-customer-name"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-800 block mb-1 flex items-center gap-1">
-                  <Phone className="w-3.5 h-3.5 text-emerald-700" />
-                  رقم الهاتف العراقي:
-                </label>
-                <input
-                  type="text"
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                  placeholder="0770XXXXXXX"
-                  className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs text-gray-900 text-left dir-ltr focus:ring-2 focus:ring-emerald-600 outline-none font-mono"
-                  required
-                  id="booking-customer-phone"
-                />
-              </div>
-            </div>
-
-            {/* Special Notes */}
-            <div>
-              <label className="text-xs font-bold text-gray-800 block mb-1 flex items-center gap-1">
-                <FileText className="w-3.5 h-3.5 text-emerald-700" />
-                ملاحظات أو طلبات خاصة (اختياري):
-              </label>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="مثال: نرغب بكوشة باللون الذهبي، أو استفسار عن نوع العشاء..."
-                className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs text-gray-900 h-16 resize-none focus:ring-2 focus:ring-emerald-600 outline-none"
-                id="booking-notes-textarea"
-              />
-            </div>
-
-            {/* Security Guarantee */}
-            <div className="flex items-center gap-2 text-[11px] text-gray-500 bg-gray-50 p-2.5 rounded-xl border border-gray-200">
-              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>
-                {currentUser.isGuest
-                  ? 'سنرسل رمز تحقق OTP سريع إلى هاتفك لربط حجزك بشكل آمن وخاص.'
-                  : 'سيتم تحويل الطلب لصاحب القاعة/الخدمة فوراً وإخطارك بحالة القبول.'}
-              </span>
-            </div>
-
-            {/* Actions */}
-            <div className="pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2.5 rounded-xl text-xs font-bold text-gray-600 hover:bg-gray-100 transition-colors"
-                id="cancel-booking-btn"
-              >
-                إلغاء
-              </button>
-              <button
-                type="submit"
-                disabled={isSelfBooking || isLoading}
-                className={`px-6 py-2.5 rounded-xl text-xs font-bold text-white transition-all shadow-md flex items-center gap-1.5 ${
-                  isSelfBooking || isLoading
-                    ? 'bg-gray-400 cursor-not-allowed opacity-60'
-                    : 'bg-emerald-700 hover:bg-emerald-800 active:scale-95'
-                }`}
-                id="confirm-booking-submit-btn"
-              >
-                <CheckCircle className="w-4 h-4" />
-                <span>{isLoading ? 'جاري حفظ الحجز...' : currentUser.isGuest ? 'متابعة الحجز والتحقق بالهاتف' : 'تأكيد إرسال طلب الحجز'}</span>
-              </button>
-            </div>
-
-          </form>
-        )}
-
-        {/* STEP 2: Guest OTP Verification Sheet */}
-        {guestStep === 'otp_form' && (
-          <form onSubmit={handleVerifyGuestOtp} className="p-5 space-y-4">
-            <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-2xl text-xs space-y-1">
-              <div className="font-bold text-emerald-950 flex items-center gap-1.5">
-                <KeyRound className="w-4 h-4 text-emerald-700" />
-                رمز التحقق (OTP) لإكمال الحجز:
-              </div>
-              <p className="text-gray-600 text-[11px]">
-                تم إرسال رمز التأكيد تلقائياً إلى رقمك <span className="font-bold font-mono text-emerald-900">{customerPhone}</span>
-              </p>
-              <p className="text-[10px] text-amber-800 font-bold bg-amber-100 px-2 py-0.5 rounded-md inline-block mt-1">
-                رمز التحقق الافتراضي لتجربة الحجز السريع: 123456
-              </p>
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-gray-800 block mb-1">أدخل رمز OTP المتكون من 6 أرقام:</label>
-              <input
-                type="text"
-                value={otpCode}
-                onChange={(e) => setOtpCode(e.target.value)}
-                placeholder="123456"
-                className="w-full px-3 py-2.5 rounded-xl border border-gray-300 text-center text-xl font-mono font-bold tracking-widest text-emerald-900 outline-none focus:ring-2 focus:ring-emerald-600"
-                maxLength={6}
-                required
-                id="guest-booking-otp-input"
-              />
-            </div>
-
-            <div className="flex items-center justify-between gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setGuestStep('details')}
-                className="text-xs font-bold text-gray-500 hover:text-emerald-800 flex items-center gap-1"
-              >
-                <ArrowRight className="w-4 h-4" />
-                <span>تغيير الاسم أو الهاتف</span>
-              </button>
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="px-6 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5"
-                id="btn-verify-guest-otp-and-book"
-              >
-                <span>{isLoading ? 'جاري التأكيد والربط...' : 'تأكيد الموعد وإنشاء الحجز'}</span>
-              </button>
-            </div>
-          </form>
-        )}
-
+        {guestStep === 'details' ? <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 flex justify-between text-xs"><div>العربون <b className="block text-amber-900">{depositAmount.toLocaleString()} د.ع</b></div><div>السعر <b className="block text-emerald-800">{totalPrice.toLocaleString()} د.ع</b></div></div>
+          <div><label className="text-xs font-bold flex gap-1 mb-1"><Calendar className="w-4 h-4"/>التاريخ</label><input type="date" value={bookingDate} onChange={(e)=>setBookingDate(e.target.value)} min={new Date().toISOString().split('T')[0]} className="w-full px-3 py-2 border rounded-xl text-xs"/></div>
+          <div>
+  <label className="text-xs font-bold flex gap-1 mb-2"><Clock className="w-4 h-4"/>الفترة {availabilityLoading && <span className="text-gray-400">(جاري الفحص...)</span>}</label>
+  <div className="grid grid-cols-3 gap-2 mb-3">
+    {PERIODS.map((period) => (
+      <button key={period.key} type="button" disabled={availabilityLoading} onClick={() => choosePeriod(period)} className={`p-2.5 rounded-xl border text-xs font-bold ${selectedPeriod === period.key ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-gray-50 text-gray-800'}`}>
+        {period.label}
+        <span className="block text-[9px] mt-0.5 opacity-80">{hourLabel(period.start)} - {hourLabel(period.end)}</span>
+      </button>
+    ))}
+  </div>
+  <div className="grid grid-cols-2 gap-3">
+    <div>
+      <label className="text-[11px] font-bold text-gray-600 block mb-1">من الساعة</label>
+      <select value={startTime} onChange={(e) => { const next = e.target.value; setStartTime(next); const h = Number(next.slice(0,2)) + (selectedPeriod === 'night' && Number(next.slice(0,2)) < 6 ? 24 : 0); if (endOptions.length === 0 || minutesForRange(next, endTime).length === 0) setEndTime(hourToTime(h + 1)); }} className="w-full px-3 py-2.5 border rounded-xl text-xs bg-white">
+        {startOptions.map((h) => <option key={h} value={hourToTime(h)}>{hourLabel(h)}</option>)}
+      </select>
+    </div>
+    <div>
+      <label className="text-[11px] font-bold text-gray-600 block mb-1">إلى الساعة</label>
+      <select value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full px-3 py-2.5 border rounded-xl text-xs bg-white">
+        {endOptions.map((h) => <option key={h} value={hourToTime(h)}>{hourLabel(h)}</option>)}
+      </select>
+    </div>
+  </div>
+  <div className={`mt-2 p-2 rounded-xl text-[10px] font-bold ${selectedBooked ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+    {selectedBooked ? 'الوقت المختار يتداخل مع حجز مؤكد. اختر وقتاً آخر.' : 'الوقت المختار متاح حالياً.'}
+  </div>
+</div>
+{isHall && hall && <div><div className="flex justify-between text-xs font-bold"><span><Users className="inline w-4 h-4"/> عدد الضيوف</span><span>{effectiveGuests}</span></div><input type="range" min={1} max={hall.capacity} step={10} value={effectiveGuests} onChange={(e)=>setGuestsCount(Number(e.target.value))} className="w-full accent-emerald-700"/></div>}
+          <div className="grid sm:grid-cols-2 gap-3"><div><label className="text-xs font-bold"><User className="inline w-4 h-4"/> الاسم</label><input value={customerName} onChange={(e)=>setCustomerName(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs" required/></div><div><label className="text-xs font-bold"><Phone className="inline w-4 h-4"/> الهاتف</label><input type="tel" inputMode="numeric" maxLength={11} value={customerPhone} onChange={(e)=>setCustomerPhone(toEnglishDigits(e.target.value).replace(/\D/g, '').slice(0, 11))} placeholder="07701234567" className="w-full px-3 py-2 border rounded-xl text-xs dir-ltr" required/></div></div>
+          <div><label className="text-xs font-bold"><FileText className="inline w-4 h-4"/> ملاحظات</label><textarea value={notes} onChange={(e)=>setNotes(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs h-16"/></div>
+          <div className="p-2.5 bg-gray-50 border rounded-xl text-[11px] text-gray-600 flex gap-2"><ShieldCheck className="w-4 h-4 text-emerald-600"/>{currentUser.isGuest?'سنرسل OTP حقيقي ونربط الحجز بهويتك.':'الحجز خاص بك وبالطرف المستلم فقط.'}</div>
+          <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className="px-4 py-2 text-xs">إلغاء</button><button disabled={isLoading||isSelfBooking||selectedBooked||availabilityLoading} className="px-5 py-2 bg-emerald-700 disabled:bg-gray-400 text-white rounded-xl text-xs font-bold flex gap-1"><WalletCards className="w-4 h-4"/>{isLoading?'جاري التنفيذ...':currentUser.isGuest?'إرسال OTP':'دفع العربون'}</button></div>
+        </form> : guestStep==='otp_form' ? <form onSubmit={verifyGuestOtp} className="p-5 space-y-4"><div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs"><KeyRound className="inline w-4 h-4"/> أدخل الرمز الحقيقي المرسل إلى {customerPhone}</div><input value={otpCode} onChange={(e)=>setOtpCode(e.target.value)} inputMode="numeric" maxLength={6} className="w-full px-3 py-2 border rounded-xl text-center text-xl tracking-widest" placeholder="000000"/><div className="flex justify-between"><button type="button" onClick={()=>setGuestStep('details')} className="text-xs flex gap-1"><ArrowRight className="w-4 h-4"/>تغيير الرقم</button><button disabled={isLoading} className="px-5 py-2 bg-emerald-800 text-white rounded-xl text-xs font-bold">{isLoading?'جاري التحقق...':'الانتقال للدفع'}</button></div></form> : <div className="p-5 space-y-4"><div className="text-center"><WalletCards className="w-10 h-10 mx-auto text-emerald-700"/><h3 className="font-black mt-2">دفع العربون</h3><p className="text-2xl font-black text-amber-700">{depositAmount.toLocaleString()} د.ع</p></div><div className="grid grid-cols-2 gap-3">{(['زين كاش','Qi Card'] as const).map(method=><button key={method} onClick={()=>setPaymentMethod(method)} className={`p-4 border-2 rounded-2xl font-bold text-sm ${paymentMethod===method?'border-emerald-700 bg-emerald-50':'border-gray-200'}`}><CreditCard className="w-5 h-5 mx-auto mb-2"/>{method}</button>)}</div><div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900">سيُسجل الطلب بانتظار الدفع إلى أن يتم ربط حساب التاجر الرسمي ببوابة {paymentMethod}. لن نعتبر العربون مدفوعاً دون تأكيد حقيقي من بوابة الدفع.</div><button disabled={isLoading||!bookingUser} onClick={async()=>{if(!bookingUser)return;setIsLoading(true);try{await submitBooking(bookingUser);onClose()}catch(err){setErrorMsg(err instanceof Error?err.message:'تعذر إرسال الحجز')}finally{setIsLoading(false)}}} className="w-full py-3 bg-emerald-700 text-white rounded-xl font-bold text-xs">{isLoading?'جاري إرسال الطلب...':`اختيار ${paymentMethod} وإرسال الطلب`}</button></div>}
       </div>
     </div>
   );

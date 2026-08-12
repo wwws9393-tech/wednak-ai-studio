@@ -1,12 +1,11 @@
 {
-  "projectId": "instant-diagram-1t3g1",
-  "appId": "1:145504774260:web:e236dbe8e07a40333ec921",
-  "apiKey": "AIzaSyB0ECLzChiqfD_6xICHbvCHPakQixgJ60s",
-  "authDomain": "instant-diagram-1t3g1.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-remix-61e34644-e99d-47c6-bfec-799ea4cd0b0b",
-  "storageBucket": "instant-diagram-1t3g1.firebasestorage.app",
-  "messagingSenderId": "145504774260",
-  "measurementId": "",
-  "oAuthClientId": "145504774260-p7tt85tr2eibsli79h8b7tmum33cpglm.apps.googleusercontent.com",
+  "projectId": "wednak2026",
+  "appId": "1:422916996832:web:4fdb50b797e2b9abb91a85",
+  "apiKey": "AIzaSyCo0uQcxD8KFmsn09A3SpWHY5gmk-mN_dU",
+  "authDomain": "wednak2026.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "wednak2026.firebasestorage.app",
+  "messagingSenderId": "422916996832",
+  "measurementId": "G-G97TNLL69Q",
   "recaptchaSiteKey": ""
 }
