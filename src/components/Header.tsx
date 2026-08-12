@@ -1,5 +1,5 @@
 import React from 'react';
-import { Heart, Bell, Search, User, Sparkles, MapPin } from 'lucide-react';
+import { Heart, Bell, Search, User, MapPin } from 'lucide-react';
 import { AccountType } from '../types';
 
 interface HeaderProps {
@@ -36,8 +36,8 @@ export const Header: React.FC<HeaderProps> = ({
               className="flex items-center gap-2 group text-right focus:outline-none"
               id="brand-logo-btn"
             >
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-700 via-emerald-600 to-amber-600 flex items-center justify-center text-white shadow-md group-hover:scale-105 transition-transform">
-                <Sparkles className="w-5 h-5 text-amber-200" />
+              <div className="wednak-logo-stage w-11 h-11 flex items-center justify-center" aria-hidden="true">
+                <img src="/wednak-mark-white.svg" alt="" className="wednak-logo-3d w-9 h-9 object-contain" />
               </div>
               <div className="flex flex-col">
                 <span className="font-bold text-xl text-emerald-900 tracking-tight flex items-center gap-1">
