@@ -64,7 +64,8 @@ service cloud.firestore {
       allow read: if signedIn();
       allow create: if isSelf(userId)
         && request.resource.data.id == userId
-        && validUserRole(request.resource.data.accountType);
+        && validUserRole(request.resource.data.accountType)
+        && !exists(/databases/$(database)/documents/deletedUsers/$(userId));
       allow update: if isAdmin() || (isSelf(userId)
         && request.resource.data.id == userId
         && request.resource.data.accountType == resource.data.accountType
@@ -72,8 +73,12 @@ service cloud.firestore {
       allow delete: if isSelf(userId) || isAdmin();
 
       match /favorites/{favoriteId} {
-        allow read, create, update, delete: if isSelf(userId);
+        allow read, create, update, delete: if isSelf(userId) || isAdmin();
       }
+    }
+
+    match /deletedUsers/{userId} {
+      allow read, write: if isAdmin();
     }
 
     match /favorites/{favoriteId} {
@@ -124,7 +129,7 @@ service cloud.firestore {
       allow update: if signedIn()
         && resource.data.ownerId == request.auth.uid
         && request.resource.data.ownerId == resource.data.ownerId;
-      allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
+      allow delete: if signedIn() && (resource.data.ownerId == request.auth.uid || isAdmin());
     }
 
     match /serviceProviders/{providerId} {
@@ -133,7 +138,7 @@ service cloud.firestore {
       allow update: if signedIn()
         && resource.data.ownerId == request.auth.uid
         && request.resource.data.ownerId == resource.data.ownerId;
-      allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
+      allow delete: if signedIn() && (resource.data.ownerId == request.auth.uid || isAdmin());
     }
 
     match /posts/{postId} {
@@ -142,7 +147,7 @@ service cloud.firestore {
       allow update: if signedIn()
         && resource.data.authorId == request.auth.uid
         && request.resource.data.authorId == resource.data.authorId;
-      allow delete: if signedIn() && resource.data.authorId == request.auth.uid;
+      allow delete: if signedIn() && (resource.data.authorId == request.auth.uid || isAdmin());
     }
 
     match /offers/{offerId} {
@@ -151,7 +156,7 @@ service cloud.firestore {
       allow update: if signedIn()
         && resource.data.ownerId == request.auth.uid
         && request.resource.data.ownerId == resource.data.ownerId;
-      allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
+      allow delete: if signedIn() && (resource.data.ownerId == request.auth.uid || isAdmin());
     }
 
     match /complaints/{complaintId} {
