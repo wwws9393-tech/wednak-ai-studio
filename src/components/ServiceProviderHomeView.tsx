@@ -20,7 +20,7 @@ interface ServiceProviderHomeViewProps {
   onUpdatePostDescription?: (postId:string,caption:string)=>Promise<void>|void;
 }
 
-const CATEGORIES: ServiceCategory[] = ['تصوير وفيديو', 'تزيين وكوشة', 'فرقة وسنترال', 'سيارات زفاف', 'صالون ومكياج عرائس', 'ضيافة وبوفيه'];
+const CATEGORIES: ServiceCategory[] = ['تصوير وفيديو', 'تزيين وكوشة', 'فرقة وسنترال', 'دي جي وموسيقى', 'زهور وباقات عرائس', 'سيارات زفاف', 'صالون ومكياج عرائس', 'ضيافة وبوفيه'];
 const isVideoUrl = (url: string) => /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url);
 
 const emptyProvider = (user: UserProfile): ServiceProvider => ({
