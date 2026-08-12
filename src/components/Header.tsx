@@ -37,7 +37,7 @@ export const Header: React.FC<HeaderProps> = ({
               id="brand-logo-btn"
             >
               <div className="wednak-logo-stage w-11 h-11 flex items-center justify-center" aria-hidden="true">
-                <img src="/wednak-mark-white.svg" alt="" className="wednak-logo-3d w-9 h-9 object-contain" />
+                <img src="/wednak-mark-green.svg" alt="" className="wednak-logo-3d w-10 h-10 object-contain" />
               </div>
               <div className="flex flex-col">
                 <span className="font-bold text-xl text-emerald-900 tracking-tight flex items-center gap-1">
