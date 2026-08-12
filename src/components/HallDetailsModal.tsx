@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Star, MapPin, Users, Sparkles, CheckCircle, Heart, ArrowLeft, Shield, Calendar, Clock, Check, AlertCircle, ShieldCheck, ExternalLink, Play } from 'lucide-react';
+import { X, Star, MapPin, Users, Sparkles, CheckCircle, Heart, ArrowLeft, Shield, Calendar, Clock, Check, AlertCircle, ShieldCheck, Play } from 'lucide-react';
 import { Hall, UserProfile, Booking, FeedPost } from '../types';
 import { subscribeAvailability } from '../lib/firebase';
 import { MediaViewer } from './MediaViewer';
+import { HallMap } from './HallMap';
 
 interface HallDetailsModalProps {
   hall: Hall | null;
@@ -78,8 +79,6 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
   const priceText = `${safePrice.toLocaleString('en-US')} د.ع`;
   const depositText = `${safeDeposit.toLocaleString('en-US')} د.ع`;
   const hallPosts = posts.filter((post) => post.targetType === 'hall' && post.targetId === hall.id);
-  const mapQuery = encodeURIComponent([hall.name, hall.location, hall.city, 'Iraq'].filter(Boolean).join(', '));
-  const mapUrl = `https://www.google.com/maps/search/?api=1&query=${mapQuery}`;
 
   const STANDARD_SLOTS = [
     'صباحي (10:00 ص - 2:00 ظ)',
@@ -114,9 +113,7 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
             <div className="bg-blue-50/70 p-3 rounded-2xl border border-blue-100/80"><span className="text-[11px] text-blue-800 font-semibold block">سعة الضيوف</span><span className="text-base font-black text-blue-900 flex items-center gap-1"><Users className="w-4 h-4 text-blue-600" /> {safeCapacity} شخص</span></div>
           </div>
 
-          <a href={mapUrl} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-3 p-3 rounded-2xl border border-emerald-200 bg-emerald-50/60 hover:bg-emerald-50 transition-colors">
-            <div className="flex items-center gap-2"><span className="p-2 rounded-xl bg-emerald-700 text-white"><MapPin className="w-4 h-4"/></span><div><b className="text-xs text-emerald-900 block">موقع القاعة على الخريطة</b><span className="text-[11px] text-gray-600">{hall.location}، {hall.city}</span></div></div><ExternalLink className="w-4 h-4 text-emerald-700"/>
-          </a>
+          <HallMap hallName={hall.name} coordinates={hall.mapLatitude != null && hall.mapLongitude != null ? { latitude: hall.mapLatitude, longitude: hall.mapLongitude } : null}/>
 
           <div><h3 className="text-sm font-bold text-gray-900 mb-1">عن القاعة:</h3><p className="text-xs text-gray-600 leading-relaxed bg-gray-50 p-3 rounded-2xl border border-gray-100">{hall.description || 'لا يوجد وصف مضاف بعد.'}</p></div>
 
