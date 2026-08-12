@@ -481,6 +481,13 @@ export async function createPostInFirestore(post: Omit<FeedPost, 'id' | 'created
   catch (err) { return handleFirestoreError(err, OperationType.CREATE, `posts/${ref.id}`); }
 }
 
+export async function updatePostDescriptionInFirestore(postId:string,caption:string):Promise<void>{
+  const user=await requireFirebaseUser();const ref=doc(db,'posts',postId);const snap=await getDoc(ref);
+  if(!snap.exists())throw new Error('العمل غير موجود.');
+  if((snap.data() as FeedPost).authorId!==user.uid)throw new Error('لا يمكنك تعديل عمل لا تملكه.');
+  await updateDoc(ref,{caption:caption.trim(),updatedAt:new Date().toISOString()});
+}
+
 export async function deletePostInFirestore(postId: string): Promise<void> {
   const user = await requireFirebaseUser();
   const ref = doc(db, 'posts', postId);
