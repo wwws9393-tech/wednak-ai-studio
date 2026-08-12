@@ -77,6 +77,17 @@ function usersFromBookings(items:Booking[]):UserProfile[]{
   items.forEach((b,index)=>{const id=b.requesterId||b.customerId||`legacy-customer-${b.customerPhone||index}`;if(!id||map.has(id))return;map.set(id,{id,name:b.requesterName||b.customerName||'زبون',phone:b.requesterPhone||b.customerPhone||'',email:'',city:b.itemLocation||'',accountType:'زبون'});});
   return Array.from(map.values());
 }
+function purgeLegacyUserData(userId:string){
+  try{
+    const saved=JSON.parse(localStorage.getItem('wednak_firestore_users')||'{}');
+    if(Array.isArray(saved))localStorage.setItem('wednak_firestore_users',JSON.stringify(saved.filter((user:any)=>user?.id!==userId)));
+    else if(saved&&typeof saved==='object'){delete saved[userId];localStorage.setItem('wednak_firestore_users',JSON.stringify(saved));}
+    const legacyBookings=JSON.parse(localStorage.getItem('wednak_bookings')||'[]');
+    if(Array.isArray(legacyBookings))localStorage.setItem('wednak_bookings',JSON.stringify(legacyBookings.filter((booking:any)=>(booking.requesterId||booking.customerId)!==userId&&(booking.targetOwnerId||booking.ownerId)!==userId)));
+    const profile=JSON.parse(localStorage.getItem('wednak_user_profile')||'null');
+    if(profile?.id===userId)localStorage.removeItem('wednak_user_profile');
+  }catch(error){console.warn('Legacy user cleanup skipped:',error);}
+}
 function mergeById<T extends {id:string}>(primary:T[],legacy:T[]):T[]{const map=new Map(legacy.map(x=>[x.id,x]));primary.forEach(x=>map.set(x.id,x));return Array.from(map.values());}
 
 export function App() {
@@ -292,7 +303,7 @@ export function App() {
     <BookingDetailsModal booking={selectedBookingForDetails} isOpen={!!selectedBookingForDetails} onClose={()=>setSelectedBookingForDetails(null)} onCancelBooking={handleCancelBooking} currentUser={currentUser} onUpdateStatus={handleUpdateBookingStatus} onOpenRequester={async(id)=>{const u=await fetchPublicUserProfile(id);if(u){setSelectedBookingForDetails(null);setSelectedUserProfile(u);}}}/>
     <AuthModal isOpen={isAuthModalOpen} onClose={()=>setIsAuthModalOpen(false)} currentUser={currentUser} onLoginSuccess={handleLoginSuccess} onLogout={handleLogout}/>
     <LegalSupportModals activeModal={activeLegalModal} onClose={()=>setActiveLegalModal(null)}/>
-    <UserProfileModal user={selectedUserProfile} bookings={bookings} isAdmin={currentUser.accountType==='مدير'||currentUser.accountType==='مدير Admin'} onClose={()=>setSelectedUserProfile(null)} onBlock={async(u,blocked)=>{await setUserBlockedInFirestore(u.id,blocked,currentUser);setSelectedUserProfile({...u,isBlocked:blocked});}} onDelete={async(u)=>{await deleteUserAndDataInFirestore(u.id,currentUser);setSelectedUserProfile(null);}} onOpenBusiness={(u)=>{setSelectedUserProfile(null);if(u.accountType==='صاحب قاعة'){const h=halls.find(x=>x.ownerId===u.id);if(h)setSelectedHallForModal(h);}else if(u.accountType==='مزود خدمة'){const p=serviceProviders.find(x=>x.ownerId===u.id);if(p)setSelectedProviderForModal(p);}}}/>
+    <UserProfileModal user={selectedUserProfile} bookings={visibleAdminBookings} isAdmin={currentUser.accountType==='مدير'||currentUser.accountType==='مدير Admin'} onClose={()=>setSelectedUserProfile(null)} onBlock={async(u,blocked)=>{await setUserBlockedInFirestore(u.id,blocked,currentUser);setSelectedUserProfile({...u,isBlocked:blocked});}} onDelete={async(u)=>{await deleteUserAndDataInFirestore(u.id,currentUser);purgeLegacyUserData(u.id);setAllUsers(prev=>prev.filter(user=>user.id!==u.id));setBookings(prev=>prev.filter(booking=>booking.requesterId!==u.id&&booking.customerId!==u.id&&booking.targetOwnerId!==u.id&&booking.ownerId!==u.id));setSelectedUserProfile(null);}} onOpenBusiness={(u)=>{setSelectedUserProfile(null);if(u.accountType==='صاحب قاعة'){const h=halls.find(x=>x.ownerId===u.id);if(h)setSelectedHallForModal(h);}else if(u.accountType==='مزود خدمة'){const p=serviceProviders.find(x=>x.ownerId===u.id);if(p)setSelectedProviderForModal(p);}}}/>
   </div>;
 }
 
