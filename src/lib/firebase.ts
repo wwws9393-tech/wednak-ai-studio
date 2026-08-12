@@ -209,10 +209,10 @@ export async function createBookingInFirestore(bookingData: {
     timeSlot: bookingData.timeSlot,
     startTime: range.start,
     endTime: range.end,
-    guests: bookingData.guests,
-    totalPrice: bookingData.totalPrice,
-    depositAmount: bookingData.depositAmount,
-    notes: bookingData.notes,
+    ...(typeof bookingData.guests === 'number' && Number.isFinite(bookingData.guests) ? { guests: bookingData.guests } : {}),
+    totalPrice: Number.isFinite(Number(bookingData.totalPrice)) ? Number(bookingData.totalPrice) : 0,
+    depositAmount: Number.isFinite(Number(bookingData.depositAmount)) ? Number(bookingData.depositAmount) : 0,
+    notes: bookingData.notes || '',
     status: 'قيد المراجعة',
     createdAt: now,
     updatedAt: now,
@@ -229,7 +229,8 @@ export async function createBookingInFirestore(bookingData: {
     hallId: bookingData.itemType === 'hall' ? bookingData.itemId : null,
     serviceProviderId: bookingData.itemType === 'provider' ? bookingData.itemId : null,
   };
-  try { await setDoc(ref, booking); return booking; }
+  const firestoreSafeBooking = removeUndefinedDeep(booking);
+  try { await setDoc(ref, firestoreSafeBooking); return booking; }
   catch (err) { return handleFirestoreError(err, OperationType.CREATE, `bookings/${ref.id}`); }
 }
 
@@ -253,10 +254,25 @@ export async function acceptBookingInFirestore(bookingId: string): Promise<void>
         itemId: booking.itemId,
         date: booking.date,
         minute: segment.minute,
-        targetOwnerId: booking.targetOwnerId,
+        targetOwnerId: user.uid,
         createdAt: new Date().toISOString(),
       }));
       tx.update(bookingRef, { status: 'مقبول', updatedAt: new Date().toISOString() });
+    });
+  } catch (err) { handleFirestoreError(err, OperationType.UPDATE, `bookings/${bookingId}`); }
+}
+
+export async function rejectBookingInFirestore(bookingId: string): Promise<void> {
+  const user = await requireFirebaseUser();
+  const bookingRef = doc(db, 'bookings', bookingId);
+  try {
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(bookingRef);
+      if (!snap.exists()) throw new Error('الحجز غير موجود.');
+      const booking = snap.data() as Booking;
+      if (booking.targetOwnerId !== user.uid) throw new Error('ليس لديك صلاحية رفض هذا الحجز.');
+      if (booking.status !== 'قيد المراجعة' && booking.status !== 'pending') throw new Error('تم تغيير حالة الحجز سابقاً.');
+      tx.update(bookingRef, { status: 'مرفوض', updatedAt: new Date().toISOString() });
     });
   } catch (err) { handleFirestoreError(err, OperationType.UPDATE, `bookings/${bookingId}`); }
 }
@@ -273,7 +289,6 @@ export async function cancelBookingInFirestore(bookingId: string): Promise<void>
       const range = getSlotTimeRange(booking.timeSlot, booking.startTime, booking.endTime);
       const segments = lockSegments(booking.itemId, booking.date, range.startMins, range.endMins);
       const lockRefs = segments.map((segment) => doc(db, 'bookingLocks', segment.id));
-      // Firestore transactions require all reads to finish before the first write.
       const lockSnaps = await Promise.all(lockRefs.map((lockRef) => tx.get(lockRef)));
       lockSnaps.forEach((lockSnap, index) => {
         if (lockSnap.exists() && lockSnap.data().bookingId === bookingId) tx.delete(lockRefs[index]);
@@ -285,6 +300,7 @@ export async function cancelBookingInFirestore(bookingId: string): Promise<void>
 
 export async function updateBookingStatusInFirestore(bookingId: string, status: BookingStatus): Promise<void> {
   if (status === 'مقبول' || status === 'accepted') return acceptBookingInFirestore(bookingId);
+  if (status === 'مرفوض' || status === 'rejected') return rejectBookingInFirestore(bookingId);
   if (status === 'ملغي' || status === 'cancelled') return cancelBookingInFirestore(bookingId);
   await requireFirebaseUser();
   try { await updateDoc(doc(db, 'bookings', bookingId), { status, updatedAt: new Date().toISOString() }); }
@@ -360,6 +376,19 @@ export async function createPostInFirestore(post: Omit<FeedPost, 'id' | 'created
   if (post.authorId && post.authorId !== user.uid) throw new Error('لا يمكنك النشر باسم حساب آخر.');
   const ref = doc(collection(db, 'posts'));
   const saved: FeedPost = { ...post, id: ref.id, authorId: user.uid, likesCount: 0, sharesCount: 0, createdAt: new Date().toISOString() };
-  try { await setDoc(ref, saved); return saved; }
+  const firestoreSafePost = removeUndefinedDeep(saved);
+  try { await setDoc(ref, firestoreSafePost); return saved; }
   catch (err) { return handleFirestoreError(err, OperationType.CREATE, `posts/${ref.id}`); }
+}
+
+export async function deletePostInFirestore(postId: string): Promise<void> {
+  const user = await requireFirebaseUser();
+  const ref = doc(db, 'posts', postId);
+  try {
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
+    const post = snap.data() as FeedPost;
+    if (post.authorId !== user.uid) throw new Error('لا يمكنك حذف منشور لا يعود إلى حسابك.');
+    await deleteDoc(ref);
+  } catch (err) { handleFirestoreError(err, OperationType.DELETE, `posts/${postId}`); }
 }
