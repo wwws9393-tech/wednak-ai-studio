@@ -259,6 +259,13 @@ export function App() {
   const visibleAdminBookings=mergeById(bookings,readLegacyBookings());
   const visibleAdminUsers=mergeById(allUsers,mergeById(readLegacyUsers(),usersFromBookings(visibleAdminBookings))).filter(user=>!['user-guest-101','owner-1','provider-user-1','admin-1'].includes(user.id));
   const bookingsWithCurrentImages=bookings.map(b=>{if(b.itemType==='provider'){const p=serviceProviders.find(x=>x.id===b.itemId);return p?{...b,itemImage:p.avatar||p.coverImage||b.itemImage}:b;}const h=halls.find(x=>x.id===b.itemId);return h?{...b,itemImage:h.profileImageUrl||h.coverImage||h.images?.[0]||b.itemImage}:b;});
+  const handleDeleteAdminUser=async(u:UserProfile)=>{
+    await deleteUserAndDataInFirestore(u.id,currentUser);
+    purgeLegacyUserData(u.id);
+    setAllUsers(prev=>prev.filter(user=>user.id!==u.id));
+    setBookings(prev=>prev.filter(booking=>booking.requesterId!==u.id&&booking.customerId!==u.id&&booking.targetOwnerId!==u.id&&booking.ownerId!==u.id));
+    setSelectedUserProfile(null);
+  };
 
   const renderRoleSpecificView = () => {
     if (currentUser.accountType === 'صاحب قاعة' && currentTab === 'home') {
@@ -268,7 +275,7 @@ export function App() {
       return <ServiceProviderHomeView currentUser={currentUser} serviceProviders={serviceProviders} bookings={bookings} posts={posts} onUpdateServiceProvider={() => {}} onUpdateBookingStatus={handleUpdateBookingStatus} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} />;
     }
     if (currentUser.accountType === 'مدير Admin' || currentUser.accountType === 'مدير') {
-      return <AdminHomeView currentUser={currentUser} users={visibleAdminUsers} dataErrors={adminDataErrors} complaints={complaints} bookings={visibleAdminBookings} halls={halls} providers={serviceProviders} onOpenUser={setSelectedUserProfile} onOpenUserId={async(id)=>{const fallback=visibleAdminUsers.find(u=>u.id===id);try{const user=await fetchPublicUserProfile(id);if(user)setSelectedUserProfile(user);else if(fallback)setSelectedUserProfile(fallback);}catch{if(fallback)setSelectedUserProfile(fallback)}}} onBlockUserId={async(id)=>{if(!id||id.startsWith('demo-'))throw new Error('هذا العنصر تجريبي ولا يرتبط بحساب مسجل.');await setUserBlockedInFirestore(id,true,currentUser);}} onOpenHall={setSelectedHallForModal} onOpenProvider={setSelectedProviderForModal} onUpdateComplaintStatus={handleUpdateComplaintStatus} onUpdateBookingStatus={handleUpdateBookingStatus} />;
+      return <AdminHomeView currentUser={currentUser} users={visibleAdminUsers} dataErrors={adminDataErrors} complaints={complaints} bookings={visibleAdminBookings} halls={halls} providers={serviceProviders} onOpenUser={setSelectedUserProfile} onOpenUserId={async(id)=>{const fallback=visibleAdminUsers.find(u=>u.id===id);try{const user=await fetchPublicUserProfile(id);if(user)setSelectedUserProfile(user);else if(fallback)setSelectedUserProfile(fallback);}catch{if(fallback)setSelectedUserProfile(fallback)}}} onBlockUserId={async(id)=>{if(!id||id.startsWith('demo-'))throw new Error('هذا العنصر تجريبي ولا يرتبط بحساب مسجل.');await setUserBlockedInFirestore(id,true,currentUser);}} onDeleteUser={handleDeleteAdminUser} onOpenHall={setSelectedHallForModal} onOpenProvider={setSelectedProviderForModal} onUpdateComplaintStatus={handleUpdateComplaintStatus} onUpdateBookingStatus={handleUpdateBookingStatus} />;
     }
 
     switch (currentTab) {
@@ -303,7 +310,7 @@ export function App() {
     <BookingDetailsModal booking={selectedBookingForDetails} isOpen={!!selectedBookingForDetails} onClose={()=>setSelectedBookingForDetails(null)} onCancelBooking={handleCancelBooking} currentUser={currentUser} onUpdateStatus={handleUpdateBookingStatus} onOpenRequester={async(id)=>{const u=await fetchPublicUserProfile(id);if(u){setSelectedBookingForDetails(null);setSelectedUserProfile(u);}}}/>
     <AuthModal isOpen={isAuthModalOpen} onClose={()=>setIsAuthModalOpen(false)} currentUser={currentUser} onLoginSuccess={handleLoginSuccess} onLogout={handleLogout}/>
     <LegalSupportModals activeModal={activeLegalModal} onClose={()=>setActiveLegalModal(null)}/>
-    <UserProfileModal user={selectedUserProfile} bookings={visibleAdminBookings} isAdmin={currentUser.accountType==='مدير'||currentUser.accountType==='مدير Admin'} onClose={()=>setSelectedUserProfile(null)} onBlock={async(u,blocked)=>{await setUserBlockedInFirestore(u.id,blocked,currentUser);setSelectedUserProfile({...u,isBlocked:blocked});}} onDelete={async(u)=>{await deleteUserAndDataInFirestore(u.id,currentUser);purgeLegacyUserData(u.id);setAllUsers(prev=>prev.filter(user=>user.id!==u.id));setBookings(prev=>prev.filter(booking=>booking.requesterId!==u.id&&booking.customerId!==u.id&&booking.targetOwnerId!==u.id&&booking.ownerId!==u.id));setSelectedUserProfile(null);}} onOpenBusiness={(u)=>{setSelectedUserProfile(null);if(u.accountType==='صاحب قاعة'){const h=halls.find(x=>x.ownerId===u.id);if(h)setSelectedHallForModal(h);}else if(u.accountType==='مزود خدمة'){const p=serviceProviders.find(x=>x.ownerId===u.id);if(p)setSelectedProviderForModal(p);}}}/>
+    <UserProfileModal user={selectedUserProfile} bookings={visibleAdminBookings} isAdmin={currentUser.accountType==='مدير'||currentUser.accountType==='مدير Admin'} onClose={()=>setSelectedUserProfile(null)} onBlock={async(u,blocked)=>{await setUserBlockedInFirestore(u.id,blocked,currentUser);setSelectedUserProfile({...u,isBlocked:blocked});}} onDelete={handleDeleteAdminUser} onOpenBusiness={(u)=>{setSelectedUserProfile(null);if(u.accountType==='صاحب قاعة'){const h=halls.find(x=>x.ownerId===u.id);if(h)setSelectedHallForModal(h);}else if(u.accountType==='مزود خدمة'){const p=serviceProviders.find(x=>x.ownerId===u.id);if(p)setSelectedProviderForModal(p);}}}/>
   </div>;
 }
 
