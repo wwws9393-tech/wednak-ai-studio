@@ -119,6 +119,20 @@ export async function findUserByPhoneFromFirestore(phone: string): Promise<UserP
   return normalize(profile.phone) === normalize(phone) ? profile : null;
 }
 
+function removeUndefinedDeep<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => removeUndefinedDeep(item)) as T;
+  }
+  if (value && typeof value === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      if (item !== undefined) result[key] = removeUndefinedDeep(item);
+    }
+    return result as T;
+  }
+  return value;
+}
+
 export async function saveUserToFirestore(user: UserProfile): Promise<UserProfile> {
   const firebaseUser = await requireFirebaseUser();
   if (user.id && user.id !== firebaseUser.uid) throw new Error('لا يمكن حفظ بيانات مستخدم آخر.');
@@ -134,7 +148,8 @@ export async function saveUserToFirestore(user: UserProfile): Promise<UserProfil
     createdAt: user.createdAt || (existing.exists() ? (existing.data() as UserProfile).createdAt : now),
     updatedAt: now,
   };
-  try { await setDoc(ref, saved, { merge: true }); return saved; }
+  const firestoreSafeUser = removeUndefinedDeep(saved);
+  try { await setDoc(ref, firestoreSafeUser, { merge: true }); return saved; }
   catch (err) { return handleFirestoreError(err, OperationType.WRITE, `users/${firebaseUser.uid}`); }
 }
 
