@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Allura&display=swap');
 @import "tailwindcss";
 
 .wednak-logo-stage { position: relative; perspective: 560px; }
@@ -33,26 +34,26 @@
 .wedding-wordmark {
   display: inline-block;
   color: #064e3b;
-  font-size: inherit;
-  font-weight: 900;
-  letter-spacing: .035em;
+  font-family: 'Allura', 'Segoe Script', 'Snell Roundhand', 'Brush Script MT', cursive;
+  font-size: 1.55rem;
+  line-height: .9;
+  font-weight: 400;
+  letter-spacing: .01em;
   transform-origin: center bottom;
-  transform: perspective(220px) rotateX(4deg) rotateY(-3deg);
+  transform: perspective(220px) rotateX(2deg) rotateY(-2deg);
   text-shadow:
-    0 1px 0 #0b6b51,
-    0 2px 0 #075c46,
-    0 3px 1px rgb(0 45 34 / .25),
-    0 5px 7px rgb(0 64 48 / .14);
+    0 .5px 0 #0b6b51,
+    0 1px 0 #075c46,
+    0 3px 5px rgb(0 64 48 / .14);
   transition: transform .35s ease, text-shadow .35s ease;
 }
 
 #brand-logo-btn:hover .wedding-wordmark {
   transform: perspective(220px) rotateX(0deg) rotateY(3deg) translateY(-1px);
   text-shadow:
-    0 1px 0 #0b6b51,
-    0 2px 0 #075c46,
-    0 3px 1px rgb(0 45 34 / .22),
-    0 7px 10px rgb(0 64 48 / .18);
+    0 .5px 0 #0b6b51,
+    0 1px 0 #075c46,
+    0 5px 8px rgb(0 64 48 / .18);
 }
 
 @media (prefers-reduced-motion: reduce) {
