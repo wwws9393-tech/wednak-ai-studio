@@ -1,10 +1,10 @@
 @import "tailwindcss";
 
-.wednak-logo-stage { perspective: 560px; filter: drop-shadow(0 7px 5px rgb(0 0 0 / .2)); }
+.wednak-logo-stage { perspective: 560px; filter: drop-shadow(0 5px 4px rgb(0 65 50 / .16)); }
 .wednak-logo-3d {
   transform-style: preserve-3d;
   animation: wednak-logo-spin 5.5s cubic-bezier(.45,.05,.55,.95) infinite;
-  filter: drop-shadow(1px 0 0 rgb(255 255 255 / .75)) drop-shadow(4px 4px 2px rgb(0 32 25 / .24));
+  filter: drop-shadow(1px 0 0 rgb(255 255 255 / .65)) drop-shadow(3px 3px 2px rgb(0 55 42 / .22));
   will-change: transform;
 }
 @keyframes wednak-logo-spin {
