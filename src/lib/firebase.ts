@@ -235,7 +235,7 @@ export async function deleteUserAndDataInFirestore(userId:string, admin:UserProf
   if (!userId || userId===user.uid) throw new Error('لا يمكن حذف حساب المدير الحالي.');
   await setDoc(doc(db,'deletedUsers',userId),{userId,deletedAt:new Date().toISOString(),deletedBy:user.uid},{merge:true});
   await deleteDoc(doc(db,'users',userId));
-  const targets:[string,string][]=[['halls','ownerId'],['serviceProviders','ownerId'],['posts','authorId'],['offers','ownerId'],['complaints','userId'],['bookings','requesterId'],['bookings','targetOwnerId']];
+  const targets:[string,string][]=[['halls','ownerId'],['serviceProviders','ownerId'],['posts','authorId'],['offers','ownerId'],['complaints','userId'],['bookings','requesterId'],['bookings','customerId'],['bookings','targetOwnerId'],['bookings','ownerId']];
   const refs=new Map<string,ReturnType<typeof doc>>();
   for (const [collectionName,field] of targets) {
     try {
