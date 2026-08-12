@@ -73,6 +73,7 @@ export function App() {
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [selectedUserProfile, setSelectedUserProfile] = useState<UserProfile|null>(null);
+  const [adminDataErrors,setAdminDataErrors]=useState<string[]>([]);
 
   useEffect(() => {
     seedInitialDataIfEmpty();
@@ -84,7 +85,7 @@ export function App() {
 
   useEffect(()=>{
     if(currentUser.accountType!=='مدير'&&currentUser.accountType!=='مدير Admin'){setAllUsers([]);return;}
-    return subscribeAllUsers(setAllUsers);
+    return subscribeAllUsers((items)=>{setAllUsers(items);setAdminDataErrors(prev=>prev.filter(x=>!x.startsWith('users:')))},(message)=>setAdminDataErrors(prev=>Array.from(new Set([...prev,`users:${message}`]))));
   },[currentUser.id,currentUser.accountType]);
   useEffect(()=>{if(!currentUser.id||currentUser.isGuest)return;return subscribeUserProfile(currentUser.id,setCurrentUser)},[currentUser.id,currentUser.isGuest]);
 
@@ -99,7 +100,7 @@ export function App() {
         const userDoc = await fetchUserFromFirestore(firebaseUser.uid);
         if (userDoc) {
           setCurrentUser(userDoc);
-          unsubBookings = subscribeBookings(firebaseUser.uid, userDoc.accountType, setBookings);
+          unsubBookings = subscribeBookings(firebaseUser.uid, userDoc.accountType, (items)=>{setBookings(items);setAdminDataErrors(prev=>prev.filter(x=>!x.startsWith('bookings:')))},(message)=>setAdminDataErrors(prev=>Array.from(new Set([...prev,`bookings:${message}`]))));
           unsubFavs = subscribeUserFavorites(firebaseUser.uid, setFavoriteIds);
           unsubComplaints = subscribeComplaints(firebaseUser.uid, userDoc.accountType, setComplaints);
         } else {
@@ -232,7 +233,7 @@ export function App() {
       return <ServiceProviderHomeView currentUser={currentUser} serviceProviders={serviceProviders} bookings={bookings} posts={posts} onUpdateServiceProvider={() => {}} onUpdateBookingStatus={handleUpdateBookingStatus} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} />;
     }
     if (currentUser.accountType === 'مدير Admin' || currentUser.accountType === 'مدير') {
-      return <AdminHomeView currentUser={currentUser} users={allUsers} complaints={complaints} bookings={bookings} halls={halls} providers={serviceProviders} onOpenUser={setSelectedUserProfile} onOpenHall={setSelectedHallForModal} onOpenProvider={setSelectedProviderForModal} onUpdateComplaintStatus={handleUpdateComplaintStatus} onUpdateBookingStatus={handleUpdateBookingStatus} />;
+      return <AdminHomeView currentUser={currentUser} users={allUsers} dataErrors={adminDataErrors} complaints={complaints} bookings={bookings} halls={halls} providers={serviceProviders} onOpenUser={setSelectedUserProfile} onOpenUserId={async(id)=>{const user=await fetchPublicUserProfile(id);if(user)setSelectedUserProfile(user)}} onOpenHall={setSelectedHallForModal} onOpenProvider={setSelectedProviderForModal} onUpdateComplaintStatus={handleUpdateComplaintStatus} onUpdateBookingStatus={handleUpdateBookingStatus} />;
     }
 
     switch (currentTab) {

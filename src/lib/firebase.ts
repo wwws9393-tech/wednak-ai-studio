@@ -159,7 +159,7 @@ export async function saveUserToFirestore(user: UserProfile): Promise<UserProfil
   catch (err) { return handleFirestoreError(err, OperationType.WRITE, `users/${firebaseUser.uid}`); }
 }
 
-export function subscribeBookings(uid: string, accountType: AccountType, callback: (bookings: Booking[]) => void) {
+export function subscribeBookings(uid: string, accountType: AccountType, callback: (bookings: Booking[]) => void, onError?: (message:string)=>void) {
   if (!uid) { callback([]); return () => {}; }
   const ref = collection(db, 'bookings');
   const q = accountType === 'مدير' || accountType === 'مدير Admin'
@@ -171,15 +171,15 @@ export function subscribeBookings(uid: string, accountType: AccountType, callbac
     const list = snap.docs.map((d) => ({ ...d.data(), id: d.id } as Booking));
     list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
     callback(list);
-  }, (err) => { console.error('Bookings listener failed:', err); callback([]); });
+  }, (err) => { console.error('Bookings listener failed:', err); onError?.(err.message); });
 }
 
-export function subscribeAllUsers(callback: (users: UserProfile[]) => void) {
+export function subscribeAllUsers(callback: (users: UserProfile[]) => void, onError?: (message:string)=>void) {
   return onSnapshot(collection(db, 'users'), (snap) => {
     const users = snap.docs.map((d)=>({ ...d.data(), id:d.id } as UserProfile));
     users.sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
     callback(users);
-  }, (err)=>{ console.error('Users listener failed:',err); callback([]); });
+  }, (err)=>{ console.error('Users listener failed:',err); onError?.(err.message); });
 }
 
 export async function setUserBlockedInFirestore(userId:string, blocked:boolean, admin:UserProfile, reason='مخالفة شروط استخدام ويدنك') {
