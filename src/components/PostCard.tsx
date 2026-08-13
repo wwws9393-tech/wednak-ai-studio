@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Heart, Share2, Sparkles, MapPin, Calendar, ArrowLeft, CheckCircle } from 'lucide-react';
+import { Heart, Share2, MapPin, ArrowLeft, CheckCircle, Play } from 'lucide-react';
 import { FeedPost } from '../types';
 
 interface PostCardProps {
   post: FeedPost;
   isLiked: boolean;
   onToggleLike: (postId: string) => void;
+  onOpenMedia: (post: FeedPost) => void;
   onOpenTarget: (post: FeedPost) => void;
   onBookTarget: (post: FeedPost) => void;
 }
@@ -14,6 +15,7 @@ export const PostCard: React.FC<PostCardProps> = ({
   post,
   isLiked,
   onToggleLike,
+  onOpenMedia,
   onOpenTarget,
   onBookTarget,
 }) => {
@@ -70,17 +72,30 @@ export const PostCard: React.FC<PostCardProps> = ({
       {/* Media Image / Video Container */}
       <div 
         className="relative w-full aspect-4/3 sm:aspect-16/9 bg-black overflow-hidden cursor-pointer"
-        onClick={() => onOpenTarget(post)}
+        onClick={() => onOpenMedia(post)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onOpenMedia(post); }}
+        aria-label={`فتح عمل ${post.title}`}
       >
-        <img
-          src={post.mediaUrl}
-          alt={post.title}
-          className="w-full h-full object-cover hover:scale-102 transition-transform duration-300"
-          loading="lazy"
-          onError={(e) => {
-            (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1200&q=80';
-          }}
-        />
+        {post.mediaType === 'video' ? (
+          <>
+            <video src={post.mediaUrl} poster={post.thumbnailUrl} muted playsInline preload="metadata" className="w-full h-full object-cover hover:scale-102 transition-transform duration-300" />
+            <span className="absolute inset-0 grid place-items-center pointer-events-none">
+              <span className="grid h-14 w-14 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm border border-white/25"><Play className="h-7 w-7 fill-current" /></span>
+            </span>
+          </>
+        ) : (
+          <img
+            src={post.mediaUrl}
+            alt={post.title}
+            className="w-full h-full object-cover hover:scale-102 transition-transform duration-300"
+            loading="lazy"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1200&q=80';
+            }}
+          />
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
         
         {/* Title Badge on Bottom Left of Image */}

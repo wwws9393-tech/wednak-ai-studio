@@ -4,6 +4,7 @@ import { FeedPost, Hall, ServiceProvider, UserProfile } from '../types';
 import { PostCard } from './PostCard';
 import { HallCard } from './HallCard';
 import { ServiceProviderCard } from './ServiceProviderCard';
+import { MediaViewer } from './MediaViewer';
 
 interface ExploreViewProps {
   posts: FeedPost[];
@@ -41,6 +42,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   currentUser,
 }) => {
   const [filterType, setFilterType] = useState<'all' | 'posts' | 'halls' | 'providers'>('all');
+  const [viewingPost, setViewingPost] = useState<FeedPost | null>(null);
 
   const filteredPosts = posts.filter(
     (p) => selectedCity === 'جميع المحافظات' || p.city === selectedCity
@@ -53,6 +55,25 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   const filteredProviders = serviceProviders.filter(
     (p) => selectedCity === 'جميع المحافظات' || p.city === selectedCity
   );
+
+  const openPostTarget = (post: FeedPost) => {
+    if (post.targetType === 'hall') {
+      const hall = halls.find((candidate) => candidate.id === post.targetId);
+      if (hall) onSelectHall(hall);
+      return;
+    }
+    const provider = serviceProviders.find((candidate) => candidate.id === post.targetId);
+    if (provider) onSelectProvider(provider);
+  };
+
+  const siblingPosts = viewingPost
+    ? posts.filter((post) => post.targetType === viewingPost.targetType && post.targetId === viewingPost.targetId)
+    : [];
+  const viewingIndex = viewingPost ? siblingPosts.findIndex((post) => post.id === viewingPost.id) : -1;
+  const showSibling = (direction: -1 | 1) => {
+    if (viewingIndex < 0 || siblingPosts.length < 2) return;
+    setViewingPost(siblingPosts[(viewingIndex + direction + siblingPosts.length) % siblingPosts.length]);
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6" id="explore-view-container">
@@ -157,15 +178,8 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                   post={post}
                   isLiked={likedPostIds.includes(post.id)}
                   onToggleLike={onTogglePostLike}
-                  onOpenTarget={(p) => {
-                    if (p.targetType === 'hall') {
-                      const h = halls.find((x) => x.id === p.targetId);
-                      if (h) onSelectHall(h);
-                    } else {
-                      const sp = serviceProviders.find((x) => x.id === p.targetId);
-                      if (sp) onSelectProvider(sp);
-                    }
-                  }}
+                  onOpenMedia={setViewingPost}
+                  onOpenTarget={openPostTarget}
                   onBookTarget={(p) => {
                     if (p.targetType === 'hall') {
                       const h = halls.find((x) => x.id === p.targetId);
@@ -228,6 +242,28 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
         )}
 
       </div>
+
+      {viewingPost && (
+        <MediaViewer
+          url={viewingPost.mediaUrl}
+          type={viewingPost.mediaType}
+          title={viewingPost.title}
+          description={viewingPost.caption}
+          authorName={viewingPost.authorName}
+          authorAvatar={viewingPost.authorAvatar}
+          authorRole={viewingPost.authorRole}
+          position={viewingIndex >= 0 ? viewingIndex + 1 : undefined}
+          total={siblingPosts.length}
+          onOpenAuthor={() => {
+            const post = viewingPost;
+            setViewingPost(null);
+            openPostTarget(post);
+          }}
+          onClose={() => setViewingPost(null)}
+          onPrevious={siblingPosts.length > 1 ? () => showSibling(-1) : undefined}
+          onNext={siblingPosts.length > 1 ? () => showSibling(1) : undefined}
+        />
+      )}
 
     </div>
   );
