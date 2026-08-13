@@ -136,13 +136,31 @@
 .wednak-auth-primary { transition: transform .2s ease, background-color .2s ease, box-shadow .2s ease; }
 .wednak-auth-primary:hover:not(:disabled) { transform: translateY(-1px); background: #06634d; box-shadow: 0 13px 28px rgb(2 70 52 / .2); }
 .wednak-auth-primary:active:not(:disabled) { transform: translateY(0) scale(.99); }
+.wednak-auth-back {
+  transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease, background-color .2s ease;
+}
+.wednak-auth-back:hover {
+  transform: translateY(-1px);
+  border-color: rgb(5 120 88 / .35);
+  background: white;
+  box-shadow: 0 9px 22px rgb(2 70 52 / .11);
+}
+.wednak-auth-back:active { transform: translateY(0) scale(.97); }
 .wednak-auth-input { border-color: rgb(15 65 53 / .14); background: rgb(255 255 255 / .88); color: #17231f; outline: none; transition: border-color .2s ease, box-shadow .2s ease, background-color .2s ease; }
 .wednak-auth-input:focus { border-color: rgb(5 120 88 / .72); background: white; box-shadow: 0 0 0 4px rgb(16 185 129 / .1); }
+
+/* Keep one polished calendar affordance: the Lucide icon stays visible while
+   the browser's smaller duplicate indicator remains clickable but invisible. */
+.wednak-booking-date-input::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  cursor: pointer;
+}
 
 @keyframes wednak-auth-arrive { from { opacity: 0; transform: translateY(16px) scale(.975); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes wednak-auth-drift { 0%,100% { transform: translate3d(0,0,0) scale(1); } 50% { transform: translate3d(12px,-12px,0) scale(1.06); } }
 
 @media (prefers-reduced-motion: reduce) {
   .wednak-auth-shell, .wednak-auth-glow { animation: none; }
-  .wednak-auth-choice, .wednak-auth-primary { transition: none; }
+  .wednak-auth-choice, .wednak-auth-primary, .wednak-auth-back { transition: none; }
+  .wednak-auth-back:hover, .wednak-auth-back:active { transform: none; }
 }

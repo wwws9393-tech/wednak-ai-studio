@@ -273,6 +273,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         </aside>
 
         <main className="wednak-auth-panel max-h-[96vh] overflow-y-auto bg-[linear-gradient(180deg,#fffefa_0%,#f7f5ed_100%)] px-5 pb-6 pt-5 sm:px-9 sm:pb-8 sm:pt-7 lg:max-h-[94vh]">
+          {mode !== 'select' && (
+            <div className="mb-3 flex justify-end" dir="ltr">
+              <button
+                type="button"
+                onClick={() => selectMode('select')}
+                className="wednak-auth-back group inline-flex items-center gap-2 rounded-full border border-emerald-900/10 bg-white/85 px-3.5 py-2 text-xs font-black text-emerald-950 shadow-sm backdrop-blur-md"
+                aria-label="الرجوع إلى خيارات الدخول"
+              >
+                <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-0.5" />
+                <span>الرجوع</span>
+              </button>
+            </div>
+          )}
           <div className="mb-5 flex items-center gap-3 border-b border-emerald-900/8 pb-5 lg:hidden" dir="ltr">
             <div className="wednak-logo-stage flex h-16 w-16 shrink-0 items-center justify-center" aria-hidden="true">
               <img src="/wednak-mark-green.svg" alt="" className="wednak-logo-3d h-14 w-14 object-contain" />
@@ -336,10 +349,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-                <button onClick={() => selectMode('select')} className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold text-gray-500 transition hover:bg-gray-100">
-                  <ArrowRight className="w-4 h-4" /> الرجوع
-                </button>
+              <div className="flex items-center justify-end border-b border-gray-100 pb-3">
                 <span className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black text-emerald-900">{modeTitle}</span>
               </div>
 

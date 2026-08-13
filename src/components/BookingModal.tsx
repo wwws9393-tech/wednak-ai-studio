@@ -340,7 +340,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
                 value={bookingDate}
                 onChange={(e)=>changeBookingDate(e.target.value)}
                 min={getIraqTodayDate()}
-                className="w-full px-3 py-2 pr-10 border rounded-xl text-xs cursor-pointer bg-white"
+                className="wednak-booking-date-input w-full px-3 py-2 pr-10 border rounded-xl text-xs cursor-pointer bg-white"
               />
               <Calendar className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-700" />
             </div>
