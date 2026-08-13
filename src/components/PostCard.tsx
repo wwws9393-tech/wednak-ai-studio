@@ -33,18 +33,32 @@ export const PostCard: React.FC<PostCardProps> = ({
     >
       {/* Header: Author Info */}
       <div className="p-3.5 flex items-center justify-between border-b border-gray-100 bg-gray-50/50">
-        <div className="flex items-center gap-2.5">
-          <img
-            src={post.authorAvatar}
-            alt={post.authorName}
-            className="w-10 h-10 rounded-full object-cover border border-emerald-200 shadow-2xs"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80';
-            }}
-          />
-          <div>
-            <div className="flex items-center gap-1.5">
-              <h4 className="text-sm font-bold text-gray-900">{post.authorName}</h4>
+        <div className="flex items-center gap-2.5 min-w-0">
+          <button
+            type="button"
+            onClick={() => onOpenTarget(post)}
+            className="shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+            aria-label={`فتح صفحة ${post.authorName}`}
+          >
+            <img
+              src={post.authorAvatar}
+              alt={post.authorName}
+              className="w-10 h-10 rounded-full object-cover border border-emerald-200 shadow-2xs hover:ring-2 hover:ring-emerald-500 transition"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80';
+              }}
+            />
+          </button>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <button
+                type="button"
+                onClick={() => onOpenTarget(post)}
+                className="min-w-0 text-right text-sm font-bold text-gray-900 hover:text-emerald-800 hover:underline underline-offset-4 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 rounded"
+                aria-label={`فتح صفحة ${post.authorName}`}
+              >
+                <span className="block truncate">{post.authorName}</span>
+              </button>
               <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.2 rounded-full">
                 {post.authorRole}
               </span>
