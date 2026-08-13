@@ -355,7 +355,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
           <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 flex justify-between text-xs"><div>العربون <b className="block text-amber-900">{depositAmount.toLocaleString()} د.ع</b></div><div>السعر <b className="block text-emerald-800">{totalPrice.toLocaleString()} د.ع</b></div></div>
           <div>
             <label htmlFor="booking-date" className="text-xs font-bold flex gap-1 mb-1 cursor-pointer" onClick={openDatePicker}><Calendar className="w-4 h-4"/>التاريخ</label>
-            <div className="relative min-w-0 max-w-full cursor-pointer overflow-hidden rounded-xl" onClick={openDatePicker}>
+            <div className="wednak-booking-date-control relative min-w-0 max-w-full cursor-pointer overflow-hidden rounded-xl">
+              <div className="pointer-events-none flex h-12 w-full items-center justify-between rounded-xl border border-slate-700 bg-white px-3 text-slate-900">
+                <Calendar className="h-5 w-5 shrink-0 text-emerald-800" />
+                <span className="font-bold tabular-nums" dir="ltr">{bookingDate}</span>
+              </div>
               <input
                 ref={dateInputRef}
                 id="booking-date"
@@ -363,10 +367,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
                 value={bookingDate}
                 onChange={(e)=>changeBookingDate(e.target.value)}
                 min={getIraqTodayDate()}
-                className="wednak-booking-date-input w-full px-3 py-2 pr-10 border rounded-xl text-xs cursor-pointer bg-white"
+                step={1}
+                aria-label="اختر تاريخ الحجز؛ الأيام السابقة غير متاحة"
+                className="wednak-booking-date-native absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
               />
-              <Calendar className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-700" />
             </div>
+            <p className="mt-1.5 flex items-center gap-1 text-[9px] font-bold text-slate-500"><ShieldCheck className="h-3.5 w-3.5 text-emerald-700" />الأيام السابقة والأوقات المنتهية مقفلة تلقائياً حسب توقيت بغداد.</p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 space-y-2">
             <div className="flex items-center justify-between gap-2">
