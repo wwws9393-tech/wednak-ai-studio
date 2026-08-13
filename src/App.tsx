@@ -51,6 +51,10 @@ import {
   deleteUserAndDataInFirestore,
   fetchPublicUserProfile,
   subscribeUserProfile,
+  subscribeNotificationReadIds,
+  markNotificationReadInFirestore,
+  markAllNotificationsReadInFirestore,
+  mergeLegacyNotificationReadIds,
 } from './lib/firebase';
 import { cancelBookingWithActorInFirestore } from './lib/bookingCancellation';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -105,6 +109,7 @@ export function App() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notificationReadIds, setNotificationReadIds] = useState<string[]>([]);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [selectedUserProfile, setSelectedUserProfile] = useState<UserProfile|null>(null);
@@ -152,9 +157,31 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (currentUser.isGuest || !currentUser.id) {
+      setNotificationReadIds([]);
+      return;
+    }
+
+    let legacyReadIds: string[] = [];
+    try {
+      const stored = JSON.parse(localStorage.getItem(notificationStorageKey(currentUser.id)) || '[]');
+      legacyReadIds = Array.isArray(stored) ? stored.filter((id): id is string => typeof id === 'string') : [];
+    } catch {
+      legacyReadIds = [];
+    }
+    if (legacyReadIds.length > 0) {
+      mergeLegacyNotificationReadIds(currentUser.id, legacyReadIds).then(() => {
+        localStorage.removeItem(notificationStorageKey(currentUser.id));
+      });
+    }
+
+    return subscribeNotificationReadIds(currentUser.id, setNotificationReadIds, (message) => {
+      console.error('Notification state synchronization failed:', message);
+    });
+  }, [currentUser.id, currentUser.isGuest]);
+
+  useEffect(() => {
     if (currentUser.isGuest || !currentUser.id) { setNotifications([]); return; }
-    let readIds: string[] = [];
-    try { readIds = JSON.parse(localStorage.getItem(notificationStorageKey(currentUser.id)) || '[]'); } catch { readIds = []; }
 
     const bookingNotifications: AppNotification[] = bookings.slice(0, 40).map((booking) => {
       const incoming = booking.targetOwnerId === currentUser.id;
@@ -196,30 +223,33 @@ export function App() {
       }
 
       const id = `booking-${booking.id}-${booking.status}-${booking.updatedAt || booking.createdAt}`;
-      return { id, title, subtitle, date: booking.updatedAt || booking.createdAt, type: 'booking', targetBookingId: booking.id, read: readIds.includes(id) };
+      return { id, title, subtitle, date: booking.updatedAt || booking.createdAt, type: 'booking', targetBookingId: booking.id, read: notificationReadIds.includes(id) };
     });
     setNotifications(bookingNotifications);
-  }, [bookings, currentUser.id, currentUser.isGuest]);
+  }, [bookings, currentUser.id, currentUser.isGuest, notificationReadIds]);
 
-  const persistReadIds = (items: AppNotification[]) => {
+  const markNotificationRead = async (id: string) => {
+    if (!currentUser.id || currentUser.isGuest || notificationReadIds.includes(id)) return;
+    setNotificationReadIds((prev) => Array.from(new Set([...prev, id])));
+    try {
+      await markNotificationReadInFirestore(currentUser.id, id);
+    } catch (error) {
+      setNotificationReadIds((prev) => prev.filter((readId) => readId !== id));
+      console.error('Could not mark notification as read:', error);
+    }
+  };
+
+  const markAllNotificationsRead = async () => {
     if (!currentUser.id || currentUser.isGuest) return;
-    localStorage.setItem(notificationStorageKey(currentUser.id), JSON.stringify(items.filter((n) => n.read).map((n) => n.id).slice(0, 200)));
-  };
-
-  const markNotificationRead = (id: string) => {
-    setNotifications((prev) => {
-      const next = prev.map((n) => n.id === id ? { ...n, read: true } : n);
-      persistReadIds(next);
-      return next;
-    });
-  };
-
-  const markAllNotificationsRead = () => {
-    setNotifications((prev) => {
-      const next = prev.map((n) => ({ ...n, read: true }));
-      persistReadIds(next);
-      return next;
-    });
+    const ids = notifications.map((notification) => notification.id);
+    const previousIds = notificationReadIds;
+    setNotificationReadIds(Array.from(new Set([...previousIds, ...ids])));
+    try {
+      await markAllNotificationsReadInFirestore(currentUser.id, ids);
+    } catch (error) {
+      setNotificationReadIds(previousIds);
+      console.error('Could not mark all notifications as read:', error);
+    }
   };
 
   const [selectedHallForModal, setSelectedHallForModal] = useState<Hall | null>(null);
