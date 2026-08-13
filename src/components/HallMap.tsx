@@ -123,6 +123,15 @@ export const HallMap: React.FC<HallMapProps> = ({
     );
   };
 
+  const openWaze = () => {
+    if (!coordinates) return;
+    window.open(
+      `https://waze.com/ul?ll=${coordinates.latitude}%2C${coordinates.longitude}&navigate=yes&utm_source=wednak`,
+      '_blank',
+      'noopener,noreferrer'
+    );
+  };
+
   const saveLocation = async () => {
     if (!draftCoordinates || !onSave) return;
     setIsSaving(true);
@@ -230,7 +239,12 @@ export const HallMap: React.FC<HallMapProps> = ({
                 </>
               ) : (
                 <>
-                  <button type="button" onClick={openGoogleMaps} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-700 px-4 py-3 text-sm font-black text-white hover:bg-emerald-800"><ExternalLink className="h-4 w-4" /> فتح اتجاهات الطريق في Google Maps</button>
+                  <button type="button" onClick={openGoogleMaps} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-700 px-4 py-3 text-sm font-black text-white hover:bg-emerald-800"><ExternalLink className="h-4 w-4" /> فتح في Google Maps</button>
+                  {!editable && (
+                    <button type="button" onClick={openWaze} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-sky-500 px-4 py-3 text-sm font-black text-white hover:bg-sky-600">
+                      <Navigation className="h-4 w-4" /> فتح في Waze
+                    </button>
+                  )}
                   {editable && onDelete && (
                     <button type="button" disabled={isSaving} onClick={deleteLocation} className="flex items-center justify-center gap-1.5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-black text-rose-700 hover:bg-rose-100 disabled:opacity-50">
                       <Trash2 className="h-4 w-4" /> حذف الموقع
