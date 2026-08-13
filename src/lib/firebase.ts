@@ -135,6 +135,10 @@ export function getIraqTodayDate(now = new Date()): string {
   return `${value('year')}-${value('month')}-${value('day')}`;
 }
 
+export function isIraqDateInPast(date: string, now = new Date()): boolean {
+  return !/^\d{4}-\d{2}-\d{2}$/.test(date) || date < getIraqTodayDate(now);
+}
+
 export function getIraqDateAfterDays(days: number, now = new Date()): string {
   const [year, month, day] = getIraqTodayDate(now).split('-').map(Number);
   const date = new Date(Date.UTC(year, month - 1, day + days));
@@ -330,16 +334,26 @@ export function subscribeBookingAvailability(
 
   let acceptedMinutes: number[] = [];
   let pendingRanges: PendingAvailabilityRange[] = [];
-  const emit = () => callback({ acceptedMinutes: [...acceptedMinutes], pendingRanges: [...pendingRanges] });
+  let acceptedReady = false;
+  let pendingReady = false;
+  // Do not report the date as available until both public availability sources
+  // have returned their first snapshot. Otherwise a fast click could briefly
+  // see an empty lock list while accepted bookings are still loading.
+  const emit = () => {
+    if (!acceptedReady || !pendingReady) return;
+    callback({ acceptedMinutes: [...acceptedMinutes], pendingRanges: [...pendingRanges] });
+  };
   const locksQuery = query(collection(db, 'bookingLocks'), where('itemId', '==', itemId), where('date', '==', date));
   const pendingQuery = query(collection(db, 'bookingAvailability'), where('itemId', '==', itemId), where('date', '==', date));
 
   const unsubscribeLocks = onSnapshot(locksQuery, (snap) => {
     acceptedMinutes = snap.docs.map((item) => Number(item.data().minute)).filter(Number.isFinite);
+    acceptedReady = true;
     emit();
   }, (error) => {
     console.error('Accepted availability listener failed:', error);
     acceptedMinutes = [];
+    acceptedReady = true;
     emit();
   });
 
@@ -351,10 +365,12 @@ export function subscribeBookingAvailability(
       if (!pendingStatusValue(data.status) || !Number.isFinite(startMinute) || !Number.isFinite(endMinute) || endMinute <= startMinute) return [];
       return [{ bookingId: String(data.bookingId || item.id), startMinute, endMinute }];
     });
+    pendingReady = true;
     emit();
   }, (error) => {
     console.error('Pending availability listener failed:', error);
     pendingRanges = [];
+    pendingReady = true;
     emit();
   });
 
@@ -368,6 +384,27 @@ function pendingStatusValue(status: unknown): boolean {
   return status === 'قيد المراجعة' || status === 'pending';
 }
 
+export async function assertBookingSelectionAvailable(
+  itemId: string,
+  date: string,
+  timeSlot: string,
+  startTime?: string,
+  endTime?: string,
+): Promise<void> {
+  if (!itemId || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('تاريخ الحجز غير صحيح.');
+  if (isIraqDateInPast(date)) throw new Error('لا يمكن الحجز في يوم سابق. اختر اليوم أو تاريخاً لاحقاً.');
+  const range = getSlotTimeRange(timeSlot, startTime, endTime);
+  const startsAt = getIraqBookingStartDate(date, range.start, Math.floor(range.startMins / 1440));
+  if (startsAt.getTime() <= Date.now()) throw new Error('هذه الفترة انتهت حسب توقيت بغداد. اختر فترة لاحقة.');
+  const snapshots = await Promise.all(
+    lockSegments(itemId, date, range.startMins, range.endMins)
+      .map((segment) => getDoc(doc(db, 'bookingLocks', segment.id)))
+  );
+  if (snapshots.some((snapshot) => snapshot.exists())) {
+    throw new Error('هذا الموعد محجوز بحجز مقبول. اختر فترة أو تاريخاً آخر.');
+  }
+}
+
 export async function createBookingInFirestore(bookingData: {
   itemType: 'hall' | 'provider'; itemId: string; itemName: string; itemLocation: string; itemImage: string;
   date: string; timeSlot: string; startTime?: string; endTime?: string; guests?: number;
@@ -379,6 +416,7 @@ export async function createBookingInFirestore(bookingData: {
   if (!bookingData.ownerId) throw new Error('تعذر تحديد مالك القاعة أو مزود الخدمة.');
   if (bookingData.ownerId === user.uid) throw new Error('لا يمكنك حجز قاعتك أو خدمتك الخاصة.');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(bookingData.date)) throw new Error('تاريخ الحجز غير صحيح.');
+  if (isIraqDateInPast(bookingData.date)) throw new Error('لا يمكن الحجز في يوم سابق. اختر اليوم أو تاريخاً لاحقاً.');
 
   const range = getSlotTimeRange(bookingData.timeSlot, bookingData.startTime, bookingData.endTime);
   const startsAt = getIraqBookingStartDate(bookingData.date, range.start, Math.floor(range.startMins / 1440));

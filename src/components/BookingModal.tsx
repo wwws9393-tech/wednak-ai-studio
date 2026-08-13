@@ -3,10 +3,12 @@ import { X, Calendar, Clock, Users, Phone, User, FileText, CheckCircle, AlertTri
 import { ConfirmationResult, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 import { Hall, ServiceProvider, UserProfile, Booking } from '../types';
 import {
+  assertBookingSelectionAvailable,
   auth,
   fetchUserFromFirestore,
   getIraqDateAfterDays,
   getIraqTodayDate,
+  isIraqDateInPast,
   isIraqBookingStartInFuture,
   PendingAvailabilityRange,
   saveUserToFirestore,
@@ -131,6 +133,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
   const confirmationRef = useRef<ConfirmationResult | null>(null);
   const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
   const recaptchaContainerRef = useRef<HTMLDivElement | null>(null);
+  const dateInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -191,7 +194,25 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
   const startOptionsForPeriod = (period: Period) => Array.from({ length: period.end - period.start }, (_, i) => period.start + i).filter(isFutureStartHour);
   const startOptions = startOptionsForPeriod(selectedPeriodConfig);
   const endOptions = Array.from({ length: selectedPeriodConfig.end - selectedStartHour }, (_, i) => selectedStartHour + i + 1);
-  const selectedPast = !isFutureStartHour(selectedStartHour);
+  const selectedDatePast = isIraqDateInPast(bookingDate, new Date(nowMs));
+  const selectedPast = selectedDatePast || !isFutureStartHour(selectedStartHour);
+
+  const openDatePicker = () => {
+    const input = dateInputRef.current;
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    try { input.showPicker?.(); } catch { /* Native picker is already opening. */ }
+  };
+
+  const changeBookingDate = (value: string) => {
+    const today = getIraqTodayDate();
+    if (!value || value < today) {
+      setErrorMsg('الأيام السابقة مقفلة. اختر اليوم أو تاريخاً لاحقاً.');
+      return;
+    }
+    setErrorMsg('');
+    setBookingDate(value);
+  };
 
   useEffect(() => {
     if (!isOpen || !bookingDate) return;
@@ -229,8 +250,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
   const submitBooking = async (user: UserProfile) => {
     if (!targetOwnerId) throw new Error('بيانات مالك القاعة أو مزود الخدمة غير مكتملة.');
     if (user.id === targetOwnerId) throw new Error('لا يمكنك حجز قاعتك أو خدمتك الخاصة.');
-    if (selectedPast) throw new Error('لا يمكن حجز تاريخ أو وقت مضى. اختر موعداً لاحقاً.');
+    if (isIraqDateInPast(bookingDate)) throw new Error('لا يمكن الحجز في يوم سابق. اختر اليوم أو تاريخاً لاحقاً.');
+    if (!isIraqBookingStartInFuture(bookingDate, startTime, Date.now(), Math.floor(selectedStartHour / 24))) throw new Error('هذه الفترة انتهت حسب توقيت بغداد. اختر فترة لاحقة.');
     if (selectedBooked) throw new Error('هذا الموعد محجوز. اختر فترة أو تاريخاً آخر.');
+    await assertBookingSelectionAvailable(item.data.id, bookingDate, timeSlot, startTime, endTime);
     await onSubmitBooking({
       itemType: item.type, itemId: item.data.id, itemName: item.data.name, itemLocation: item.data.location,
       itemImage: isHall ? (hall!.coverImage || hall!.images[0] || '') : (provider!.avatar || provider!.coverImage || ''),
@@ -264,10 +287,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
     if (!bookingDate) return setErrorMsg('اختر تاريخ الحجز.');
     if (availabilityLoading) return setErrorMsg('انتظر حتى يكتمل فحص المواعيد.');
     if (isSelfBooking) return setErrorMsg('لا يمكنك حجز قاعتك أو خدمتك الخاصة.');
-    if (selectedPast) return setErrorMsg('لا يمكن حجز تاريخ أو وقت مضى. اختر موعداً لاحقاً.');
+    if (selectedDatePast) return setErrorMsg('لا يمكن الحجز في يوم سابق. اختر اليوم أو تاريخاً لاحقاً.');
+    if (selectedPast) return setErrorMsg('هذه الفترة انتهت حسب توقيت بغداد. اختر فترة لاحقة.');
     if (selectedBooked) return setErrorMsg('هذا الموعد محجوز.');
     setIsLoading(true);
     try {
+      await assertBookingSelectionAvailable(item.data.id, bookingDate, timeSlot, startTime, endTime);
       if (currentUser.isGuest) await sendGuestOtp();
       else { setBookingUser(currentUser); setGuestStep('payment'); }
     } catch (err: any) { console.error('Booking failed:', err); const code = err?.code || ''; const msg = code === 'auth/operation-not-allowed' ? 'تسجيل الدخول برقم الهاتف غير مفعّل في Firebase. فعّل Phone provider من Firebase Authentication.' : code === 'auth/invalid-app-credential' || code === 'auth/captcha-check-failed' ? 'فشل تحقق reCAPTCHA. تأكد أن localhost مضاف إلى Authorized domains في Firebase Authentication.' : code === 'auth/too-many-requests' ? 'تم إرسال محاولات كثيرة. انتظر قليلاً ثم حاول مجدداً.' : code === 'auth/invalid-phone-number' ? 'رقم الهاتف غير صحيح. اكتب 11 رقماً عراقياً يبدأ بـ 07.' : (err instanceof Error ? err.message : 'تعذر تنفيذ الحجز.'); setErrorMsg(msg); }
@@ -305,7 +330,21 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
 
         {guestStep === 'details' ? <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 flex justify-between text-xs"><div>العربون <b className="block text-amber-900">{depositAmount.toLocaleString()} د.ع</b></div><div>السعر <b className="block text-emerald-800">{totalPrice.toLocaleString()} د.ع</b></div></div>
-          <div><label className="text-xs font-bold flex gap-1 mb-1"><Calendar className="w-4 h-4"/>التاريخ</label><input type="date" value={bookingDate} onChange={(e)=>setBookingDate(e.target.value)} min={getIraqTodayDate()} className="w-full px-3 py-2 border rounded-xl text-xs"/></div>
+          <div>
+            <label htmlFor="booking-date" className="text-xs font-bold flex gap-1 mb-1 cursor-pointer" onClick={openDatePicker}><Calendar className="w-4 h-4"/>التاريخ</label>
+            <div className="relative cursor-pointer" onClick={openDatePicker}>
+              <input
+                ref={dateInputRef}
+                id="booking-date"
+                type="date"
+                value={bookingDate}
+                onChange={(e)=>changeBookingDate(e.target.value)}
+                min={getIraqTodayDate()}
+                className="w-full px-3 py-2 pr-10 border rounded-xl text-xs cursor-pointer bg-white"
+              />
+              <Calendar className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-700" />
+            </div>
+          </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 space-y-2">
             <div className="flex items-center justify-between gap-2">
               <label className="text-xs font-black text-slate-900 flex items-center gap-1.5">
@@ -351,7 +390,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
   <label className="text-xs font-bold flex gap-1 mb-2"><Clock className="w-4 h-4"/>الفترة {availabilityLoading && <span className="text-gray-400">(جاري الفحص...)</span>}</label>
   <div className="grid grid-cols-3 gap-2 mb-3">
     {PERIODS.map((period) => {
-      const periodPast = startOptionsForPeriod(period).length === 0;
+      const periodPast = selectedDatePast || startOptionsForPeriod(period).length === 0;
       return (
       <button key={period.key} type="button" disabled={availabilityLoading || periodPast} onClick={() => choosePeriod(period)} className={`p-2.5 rounded-xl border text-xs font-bold ${periodPast ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : selectedPeriod === period.key ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-gray-50 text-gray-800'}`}>
         {period.label}
