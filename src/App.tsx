@@ -57,6 +57,7 @@ import {
   mergeLegacyNotificationReadIds,
 } from './lib/firebase';
 import { cancelBookingWithActorInFirestore } from './lib/bookingCancellation';
+import { initializeForegroundPushNotifications, refreshPushRegistration } from './lib/pushNotifications';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { Building2, Camera, Sparkles, ArrowLeft, Search } from 'lucide-react';
 
@@ -114,6 +115,37 @@ export function App() {
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [selectedUserProfile, setSelectedUserProfile] = useState<UserProfile|null>(null);
   const [adminDataErrors,setAdminDataErrors]=useState<string[]>([]);
+
+  useEffect(() => {
+    let unsubscribe = () => {};
+    initializeForegroundPushNotifications().then((cleanup) => { unsubscribe = cleanup; }).catch((error) => {
+      console.warn('Foreground push initialization skipped:', error);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser.id || currentUser.isGuest) return;
+    refreshPushRegistration(currentUser.id).catch((error) => {
+      console.warn('Push token refresh skipped:', error);
+    });
+  }, [currentUser.id, currentUser.isGuest]);
+
+  useEffect(() => {
+    if (bookings.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const bookingId = params.get('booking');
+    const requestedTab = params.get('tab');
+    if (requestedTab === 'notifications') setCurrentTab('notifications');
+    if (!bookingId) return;
+    const booking = bookings.find((item) => item.id === bookingId || item.bookingId === bookingId);
+    if (!booking) return;
+    setSelectedBookingForDetails(booking);
+    params.delete('booking');
+    params.delete('tab');
+    const query = params.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
+  }, [bookings]);
 
   useEffect(() => {
     seedInitialDataIfEmpty();
