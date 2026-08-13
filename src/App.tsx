@@ -183,6 +183,7 @@ export function App() {
   useEffect(() => {
     if (currentUser.isGuest || !currentUser.id) { setNotifications([]); return; }
 
+    const isAdminAccount = currentUser.accountType === 'مدير' || currentUser.accountType === 'مدير Admin';
     const bookingNotifications: AppNotification[] = bookings.slice(0, 40).map((booking) => {
       const incoming = booking.targetOwnerId === currentUser.id;
       const pending = booking.status === 'قيد المراجعة' || booking.status === 'pending';
@@ -192,7 +193,10 @@ export function App() {
       let title = '';
       let subtitle = '';
 
-      if (incoming) {
+      if (isAdminAccount) {
+        title = `حجز ${booking.status}: ${booking.itemName}`;
+        subtitle = `${booking.requesterName || booking.customerName} • ${booking.date} • ${booking.startTime || booking.timeSlot}`;
+      } else if (incoming) {
         if (pending) {
           title = `طلب حجز جديد من ${booking.requesterName || booking.customerName}`;
           subtitle = `${booking.itemName} • ${booking.date} • ${booking.startTime || booking.timeSlot} — اضغط لفتح الطلب وقبوله أو رفضه`;
