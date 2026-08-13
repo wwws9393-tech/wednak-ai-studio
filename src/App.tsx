@@ -58,6 +58,7 @@ import {
 } from './lib/firebase';
 import { cancelBookingWithActorInFirestore } from './lib/bookingCancellation';
 import { initializeForegroundPushNotifications, refreshPushRegistration } from './lib/pushNotifications';
+import { dispatchBookingPush } from './lib/pushDispatch';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { Building2, Camera, Sparkles, ArrowLeft, Search } from 'lucide-react';
 
@@ -310,9 +311,18 @@ export function App() {
     itemType: 'hall' | 'provider'; itemId: string; itemName: string; itemLocation: string; itemImage: string;
     date: string; timeSlot: string; guests?: number; totalPrice: number; depositAmount: number; notes: string;
     customerName: string; customerPhone: string; customerId: string; ownerId?: string;
-  }) => { await createBookingInFirestore(bookingData); };
-  const handleUpdateBookingStatus = async (bookingId: string, newStatus: BookingStatus) => { await updateBookingStatusInFirestore(bookingId, newStatus); };
-  const handleCancelBooking = async (bookingId: string) => { await cancelBookingWithActorInFirestore(bookingId, currentUser); };
+  }) => {
+    const booking = await createBookingInFirestore(bookingData);
+    await dispatchBookingPush(booking.id, 'created');
+  };
+  const handleUpdateBookingStatus = async (bookingId: string, newStatus: BookingStatus) => {
+    await updateBookingStatusInFirestore(bookingId, newStatus);
+    await dispatchBookingPush(bookingId, 'updated');
+  };
+  const handleCancelBooking = async (bookingId: string) => {
+    await cancelBookingWithActorInFirestore(bookingId, currentUser);
+    await dispatchBookingPush(bookingId, 'updated');
+  };
   const handleCreateComplaint = async (data: { subject: string; relatedItemName?: string; description: string }) => {
     await createComplaintInFirestore({ userId: currentUser.id, userName: currentUser.name, userPhone: currentUser.phone, subject: data.subject, relatedItemName: data.relatedItemName, description: data.description });
   };
