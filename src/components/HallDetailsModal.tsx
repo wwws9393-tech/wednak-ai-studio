@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Star, MapPin, Users, Sparkles, CheckCircle, Heart, ArrowLeft, Shield, Calendar, Clock, Check, AlertCircle, ShieldCheck, Play } from 'lucide-react';
 import { Hall, UserProfile, Booking, FeedPost } from '../types';
-import { subscribeAvailability } from '../lib/firebase';
+import { getIraqTodayDate, PendingAvailabilityRange, subscribeBookingAvailability } from '../lib/firebase';
 import { MediaViewer } from './MediaViewer';
 import { HallMap } from './HallMap';
 
@@ -30,8 +30,9 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
   posts = [],
 }) => {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => getIraqTodayDate());
   const [busyMinutes, setBusyMinutes] = useState<number[]>([]);
+  const [pendingRanges, setPendingRanges] = useState<PendingAvailabilityRange[]>([]);
   const [viewingPost,setViewingPost]=useState<FeedPost|null>(null);
   const modalScrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -52,8 +53,11 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
 
   useEffect(() => {
     const itemId = hall?.id;
-    if (!isOpen || !itemId || !selectedCalendarDate) { setBusyMinutes([]); return; }
-    return subscribeAvailability(itemId, selectedCalendarDate, setBusyMinutes);
+    if (!isOpen || !itemId || !selectedCalendarDate) { setBusyMinutes([]); setPendingRanges([]); return; }
+    return subscribeBookingAvailability(itemId, selectedCalendarDate, (availability) => {
+      setBusyMinutes(availability.acceptedMinutes);
+      setPendingRanges(availability.pendingRanges);
+    });
   }, [isOpen, hall?.id, selectedCalendarDate]);
 
   const busySet = useMemo(() => new Set(busyMinutes), [busyMinutes]);
@@ -66,6 +70,7 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
     return result;
   };
   const slotIsBooked = (slot: string) => slotMinutes(slot).some((minute) => busySet.has(minute));
+  const slotIsPending = (slot: string) => slotMinutes(slot).some((minute) => pendingRanges.some((range) => minute >= range.startMinute && minute < range.endMinute));
 
   if (!isOpen || !hall) return null;
 
@@ -122,8 +127,8 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
           {Array.isArray(hall.features) && hall.features.length > 0 && <div><h3 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-1.5"><Sparkles className="w-4 h-4 text-amber-500" />المميزات المشمولة في الحجز:</h3><div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{hall.features.map((feature, idx) => <div key={idx} className="flex items-center gap-2 bg-emerald-50/40 p-2.5 rounded-xl border border-emerald-100/60 text-xs text-emerald-900 font-semibold"><CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" /><span>{feature}</span></div>)}</div></div>}
 
           <div className="bg-gradient-to-br from-amber-50/60 via-white to-emerald-50/60 p-4 rounded-3xl border border-amber-200/80 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-100 pb-3"><div><h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5"><Calendar className="w-4 h-4 text-emerald-700" />جدول المواعيد والتوفر لـ ({hall.name})</h3><p className="text-[11px] text-gray-500">اختر التاريخ للتحقق من الأوقات المتاحة</p></div><input type="date" value={selectedCalendarDate} onChange={(e) => setSelectedCalendarDate(e.target.value)} min={new Date().toISOString().split('T')[0]} className="px-3 py-1.5 bg-white rounded-xl border border-gray-300 text-xs font-bold text-gray-800" id="hall-calendar-date-picker" /></div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">{STANDARD_SLOTS.map((slot) => { const isBooked = slotIsBooked(slot); return <div key={slot} className={`p-3 rounded-2xl border text-xs ${isBooked ? 'bg-rose-50/80 border-rose-200 text-rose-900' : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'}`}><div className="flex items-center justify-between mb-1"><span className="font-bold flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{slot.split(' ')[0]}</span>{isBooked ? <span className="bg-rose-600 text-white text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1"><AlertCircle className="w-3 h-3" />غير متاح</span> : <span className="bg-emerald-700 text-white text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1"><Check className="w-3 h-3" />متاح</span>}</div><span className="text-[10px] text-gray-600">{slot}</span></div>; })}</div>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-100 pb-3"><div><h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5"><Calendar className="w-4 h-4 text-emerald-700" />جدول المواعيد والتوفر لـ ({hall.name})</h3><p className="text-[11px] text-gray-500">الأحمر محجوز، والبرتقالي قيد المراجعة، والأخضر متاح</p></div><input type="date" value={selectedCalendarDate} onChange={(e) => setSelectedCalendarDate(e.target.value)} min={getIraqTodayDate()} className="px-3 py-1.5 bg-white rounded-xl border border-gray-300 text-xs font-bold text-gray-800" id="hall-calendar-date-picker" /></div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">{STANDARD_SLOTS.map((slot) => { const isBooked = slotIsBooked(slot); const isPending = !isBooked && slotIsPending(slot); return <div key={slot} className={`p-3 rounded-2xl border text-xs ${isBooked ? 'bg-rose-50/80 border-rose-200 text-rose-900' : isPending ? 'bg-amber-50/80 border-amber-200 text-amber-900' : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'}`}><div className="flex items-center justify-between mb-1"><span className="font-bold flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{slot.split(' ')[0]}</span>{isBooked ? <span className="bg-rose-600 text-white text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1"><AlertCircle className="w-3 h-3" />غير متاح</span> : isPending ? <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1"><Clock className="w-3 h-3" />قيد المراجعة</span> : <span className="bg-emerald-700 text-white text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1"><Check className="w-3 h-3" />متاح</span>}</div><span className="text-[10px] text-gray-600">{slot}</span></div>; })}</div>
           </div>
 
           <div className="flex items-center gap-2 bg-amber-50/80 p-3 rounded-2xl border border-amber-200 text-xs text-amber-900 font-medium"><Shield className="w-5 h-5 text-amber-600 shrink-0" /><span>حجزك محمي وموثق بواسطة منصة Wedنك.</span></div>

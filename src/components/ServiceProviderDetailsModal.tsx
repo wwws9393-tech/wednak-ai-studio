@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { X, Star, MapPin, Phone, Heart, CheckCircle2, Camera, Calendar, Shield, Clock, Check, AlertCircle, ShieldCheck, Sparkles } from 'lucide-react';
 import { ServiceProvider, UserProfile, Booking, FeedPost } from '../types';
-import { subscribeAvailability } from '../lib/firebase';
+import { getIraqTodayDate, PendingAvailabilityRange, subscribeBookingAvailability } from '../lib/firebase';
 import { MediaViewer } from './MediaViewer';
 
 interface ServiceProviderDetailsModalProps {
@@ -28,14 +28,18 @@ export const ServiceProviderDetailsModal: React.FC<ServiceProviderDetailsModalPr
   currentUser,
   posts = [],
 }) => {
-  const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => getIraqTodayDate());
   const [busyMinutes, setBusyMinutes] = useState<number[]>([]);
+  const [pendingRanges, setPendingRanges] = useState<PendingAvailabilityRange[]>([]);
   const [viewing,setViewing]=useState<{url:string,type:'image'|'video',title?:string,description?:string}|null>(null);
 
   useEffect(() => {
     const itemId = provider?.id;
-    if (!isOpen || !itemId || !selectedCalendarDate) { setBusyMinutes([]); return; }
-    return subscribeAvailability(itemId, selectedCalendarDate, setBusyMinutes);
+    if (!isOpen || !itemId || !selectedCalendarDate) { setBusyMinutes([]); setPendingRanges([]); return; }
+    return subscribeBookingAvailability(itemId, selectedCalendarDate, (availability) => {
+      setBusyMinutes(availability.acceptedMinutes);
+      setPendingRanges(availability.pendingRanges);
+    });
   }, [isOpen, provider?.id, selectedCalendarDate]);
 
   const busySet = useMemo(() => new Set(busyMinutes), [busyMinutes]);
@@ -48,6 +52,7 @@ export const ServiceProviderDetailsModal: React.FC<ServiceProviderDetailsModalPr
     return result;
   };
   const slotIsBooked = (slot: string) => slotMinutes(slot).some((minute) => busySet.has(minute));
+  const slotIsPending = (slot: string) => slotMinutes(slot).some((minute) => pendingRanges.some((range) => minute >= range.startMinute && minute < range.endMinute));
 
   if (!isOpen || !provider) return null;
 
@@ -91,8 +96,8 @@ export const ServiceProviderDetailsModal: React.FC<ServiceProviderDetailsModalPr
           {(portfolio.length > 0 || providerPosts.length > 0) && <div><h3 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-1.5"><Camera className="w-4 h-4 text-emerald-600" />معرض الأعمال ({portfolio.length + providerPosts.length})</h3><div className="grid grid-cols-2 sm:grid-cols-3 gap-3">{portfolio.map((url, idx) => <button onClick={()=>setViewing({url,type:isVideoUrl(url)?'video':'image',description:provider.portfolioDescriptions?.[url]})} key={`portfolio-${idx}`} className="text-right aspect-square rounded-xl overflow-hidden border bg-gray-100 relative">{isVideoUrl(url) ? <video src={url} muted className="w-full h-full object-cover" /> : <img src={url} alt={`عمل ${idx + 1}`} className="w-full h-full object-cover" />}<span className="absolute bottom-0 inset-x-0 bg-black/60 text-white p-2 text-[10px]">{provider.portfolioDescriptions?.[url]||'بدون وصف'}</span></button>)}{providerPosts.map(post => <button onClick={()=>setViewing({url:post.mediaUrl,type:post.mediaType,title:post.title,description:post.caption})} key={post.id} className="text-right aspect-square rounded-xl overflow-hidden border bg-gray-100 relative">{post.mediaType === 'video' ? <video src={post.mediaUrl} muted className="w-full h-full object-cover" /> : <img src={post.mediaUrl} alt={post.title} className="w-full h-full object-cover" />}<div className="absolute bottom-0 inset-x-0 p-2 bg-black/60 text-white text-[10px] line-clamp-1">{post.title}</div></button>)}</div></div>}
 
           <div className="bg-gradient-to-br from-amber-50/60 via-white to-emerald-50/60 p-4 rounded-3xl border border-amber-200/80 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-100 pb-3"><div><h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5"><Calendar className="w-4 h-4 text-emerald-700" />جدول مواعيد الخدمة والتوفر لـ ({provider.name})</h3><p className="text-[11px] text-gray-500">اختر التاريخ للتحقق من الأوقات المتاحة للحجز المؤكد</p></div><input type="date" value={selectedCalendarDate} onChange={(e) => setSelectedCalendarDate(e.target.value)} min={new Date().toISOString().split('T')[0]} className="px-3 py-1.5 bg-white rounded-xl border border-gray-300 text-xs font-bold text-gray-800" id="provider-calendar-date-picker" /></div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">{STANDARD_SLOTS.map((slot) => { const isBooked = slotIsBooked(slot); return <div key={slot} className={`p-3 rounded-2xl border text-xs ${isBooked ? 'bg-rose-50/80 border-rose-200 text-rose-900' : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'}`}><div className="flex items-center justify-between mb-1"><span className="font-bold flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{slot.split(' ')[0]}</span>{isBooked ? <span className="bg-rose-600 text-white text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1"><AlertCircle className="w-3 h-3" />غير متاح</span> : <span className="bg-emerald-700 text-white text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1"><Check className="w-3 h-3" />متاح</span>}</div><span className="text-[10px] text-gray-600">{slot}</span></div>; })}</div>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-100 pb-3"><div><h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5"><Calendar className="w-4 h-4 text-emerald-700" />جدول مواعيد الخدمة والتوفر لـ ({provider.name})</h3><p className="text-[11px] text-gray-500">الأحمر محجوز، والبرتقالي قيد المراجعة، والأخضر متاح</p></div><input type="date" value={selectedCalendarDate} onChange={(e) => setSelectedCalendarDate(e.target.value)} min={getIraqTodayDate()} className="px-3 py-1.5 bg-white rounded-xl border border-gray-300 text-xs font-bold text-gray-800" id="provider-calendar-date-picker" /></div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">{STANDARD_SLOTS.map((slot) => { const isBooked = slotIsBooked(slot); const isPending = !isBooked && slotIsPending(slot); return <div key={slot} className={`p-3 rounded-2xl border text-xs ${isBooked ? 'bg-rose-50/80 border-rose-200 text-rose-900' : isPending ? 'bg-amber-50/80 border-amber-200 text-amber-900' : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'}`}><div className="flex items-center justify-between mb-1"><span className="font-bold flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{slot.split(' ')[0]}</span>{isBooked ? <span className="bg-rose-600 text-white text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1"><AlertCircle className="w-3 h-3" />غير متاح</span> : isPending ? <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1"><Clock className="w-3 h-3" />قيد المراجعة</span> : <span className="bg-emerald-700 text-white text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1"><Check className="w-3 h-3" />متاح</span>}</div><span className="text-[10px] text-gray-600">{slot}</span></div>; })}</div>
           </div>
 
           <div className="flex items-center gap-2 bg-amber-50 p-3 rounded-2xl border border-amber-200 text-xs text-amber-900"><Shield className="w-5 h-5 text-amber-600 shrink-0" /><span>صفحة مزود الخدمة موثقة داخل منصة Wedنك.</span></div>

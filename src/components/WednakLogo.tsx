@@ -12,7 +12,7 @@ export const WednakLogo: React.FC<WednakLogoProps> = ({
     aria-label="شعار ويدنك"
   >
     <img
-      src="/wednak-mark-green.svg"
+      src="/wednak-mark-white.png"
       alt="شعار ويدنك"
       className="h-full w-full object-contain"
     />

@@ -34,6 +34,7 @@ export async function cancelBookingWithActorInFirestore(bookingId: string, actor
     lockSnaps.forEach((lockSnap, index) => {
       if (lockSnap.exists() && lockSnap.data().bookingId === bookingId) tx.delete(lockRefs[index]);
     });
+    tx.delete(doc(db, 'bookingAvailability', bookingId));
 
     const cancelledByRole = actor.accountType === 'صاحب قاعة'
       ? 'صاحب قاعة'

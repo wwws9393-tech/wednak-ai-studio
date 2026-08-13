@@ -2,7 +2,16 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Calendar, Clock, Users, Phone, User, FileText, CheckCircle, AlertTriangle, ShieldCheck, AlertCircle, KeyRound, ArrowRight, CreditCard, WalletCards } from 'lucide-react';
 import { ConfirmationResult, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 import { Hall, ServiceProvider, UserProfile, Booking } from '../types';
-import { auth, fetchUserFromFirestore, saveUserToFirestore, subscribeAvailability } from '../lib/firebase';
+import {
+  auth,
+  fetchUserFromFirestore,
+  getIraqDateAfterDays,
+  getIraqTodayDate,
+  isIraqBookingStartInFuture,
+  PendingAvailabilityRange,
+  saveUserToFirestore,
+  subscribeBookingAvailability,
+} from '../lib/firebase';
 import { WednakLogo } from './WednakLogo';
 
 interface BookingModalProps {
@@ -71,9 +80,10 @@ function mergeBusyMinutes(minutes: number[]): Array<{ start: number; end: number
   return ranges;
 }
 
-function minutesForRange(startTime: string, endTime: string): number[] {
+function minutesForRange(startTime: string, endTime: string, period?: PeriodKey): number[] {
   const toMinutes = (time: string) => { const [h, m] = time.split(':').map(Number); return h * 60 + m; };
-  const start = toMinutes(startTime);
+  let start = toMinutes(startTime);
+  if (period === 'night' && start < 360) start += 1440;
   let end = toMinutes(endTime);
   if (end <= start) end += 1440;
   const result: number[] = [];
@@ -100,7 +110,7 @@ function normalizeIraqiPhone(raw: string): string {
 
 
 export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClose, currentUser, onLoginSuccess, onSubmitBooking }) => {
-  const [bookingDate, setBookingDate] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().split('T')[0]; });
+  const [bookingDate, setBookingDate] = useState(() => getIraqDateAfterDays(7));
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodKey>('evening');
   const [startTime, setStartTime] = useState('18:00');
   const [endTime, setEndTime] = useState('23:00');
@@ -114,8 +124,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
   const [paymentMethod,setPaymentMethod]=useState<Booking['paymentMethod']>('زين كاش');
   const [otpCode, setOtpCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [busyMinutes, setBusyMinutes] = useState<number[]>([]);
+  const [acceptedMinutes, setAcceptedMinutes] = useState<number[]>([]);
+  const [pendingRanges, setPendingRanges] = useState<PendingAvailabilityRange[]>([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const confirmationRef = useRef<ConfirmationResult | null>(null);
   const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
   const recaptchaContainerRef = useRef<HTMLDivElement | null>(null);
@@ -128,13 +140,26 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
   }, [isOpen, currentUser.id, currentUser.isGuest, currentUser.name, currentUser.phone]);
 
   useEffect(() => {
-    if (!isOpen || !item?.data.id || !bookingDate) { setBusyMinutes([]); return; }
+    if (!isOpen || !item?.data.id || !bookingDate) {
+      setAcceptedMinutes([]);
+      setPendingRanges([]);
+      return;
+    }
     setAvailabilityLoading(true);
-    const unsubscribe = subscribeAvailability(item.data.id, bookingDate, (minutes) => {
-      setBusyMinutes(minutes); setAvailabilityLoading(false);
+    const unsubscribe = subscribeBookingAvailability(item.data.id, bookingDate, (availability) => {
+      setAcceptedMinutes(availability.acceptedMinutes);
+      setPendingRanges(availability.pendingRanges);
+      setAvailabilityLoading(false);
     });
     return unsubscribe;
   }, [isOpen, item?.data.id, bookingDate]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setNowMs(Date.now());
+    const timer = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, [isOpen]);
 
   const disposeRecaptcha = () => {
     try { recaptchaRef.current?.clear(); } catch (error) { console.warn('Guest reCAPTCHA clear skipped:', error); }
@@ -146,18 +171,48 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
   useEffect(() => () => disposeRecaptcha(), []);
 
   const selectedPeriodConfig = useMemo(() => PERIODS.find((p) => p.key === selectedPeriod) || PERIODS[1], [selectedPeriod]);
-  const busySet = useMemo(() => new Set(busyMinutes), [busyMinutes]);
-  const busyRanges = useMemo(() => mergeBusyMinutes(busyMinutes), [busyMinutes]);
-  const selectedMinutes = useMemo(() => minutesForRange(startTime, endTime), [startTime, endTime]);
-  const selectedBooked = selectedMinutes.some((minute) => busySet.has(minute));
+  const acceptedSet = useMemo(() => new Set(acceptedMinutes), [acceptedMinutes]);
+  const acceptedRanges = useMemo(() => mergeBusyMinutes(acceptedMinutes), [acceptedMinutes]);
+  const visiblePendingRanges = useMemo(() => {
+    const ranges = new Map<string, { startMinute: number; endMinute: number; count: number }>();
+    pendingRanges.forEach((range) => {
+      const key = `${range.startMinute}-${range.endMinute}`;
+      const current = ranges.get(key);
+      ranges.set(key, { startMinute: range.startMinute, endMinute: range.endMinute, count: (current?.count || 0) + 1 });
+    });
+    return Array.from(ranges.values()).sort((a, b) => a.startMinute - b.startMinute);
+  }, [pendingRanges]);
+  const selectedMinutes = useMemo(() => minutesForRange(startTime, endTime, selectedPeriod), [startTime, endTime, selectedPeriod]);
+  const selectedBooked = selectedMinutes.some((minute) => acceptedSet.has(minute));
+  const selectedPending = pendingRanges.some((range) => selectedMinutes.some((minute) => minute >= range.startMinute && minute < range.endMinute));
   const timeSlot = `${selectedPeriodConfig.label} (${hourLabel(Number(startTime.slice(0, 2)))} - ${hourLabel(Number(endTime.slice(0, 2)) || 24)})`;
-  const startOptions = Array.from({ length: selectedPeriodConfig.end - selectedPeriodConfig.start }, (_, i) => selectedPeriodConfig.start + i);
   const selectedStartHour = Number(startTime.slice(0, 2)) + (selectedPeriod === 'night' && Number(startTime.slice(0, 2)) < 6 ? 24 : 0);
+  const isFutureStartHour = (hour: number) => isIraqBookingStartInFuture(bookingDate, hourToTime(hour), nowMs, Math.floor(hour / 24));
+  const startOptionsForPeriod = (period: Period) => Array.from({ length: period.end - period.start }, (_, i) => period.start + i).filter(isFutureStartHour);
+  const startOptions = startOptionsForPeriod(selectedPeriodConfig);
   const endOptions = Array.from({ length: selectedPeriodConfig.end - selectedStartHour }, (_, i) => selectedStartHour + i + 1);
+  const selectedPast = !isFutureStartHour(selectedStartHour);
+
+  useEffect(() => {
+    if (!isOpen || !bookingDate) return;
+    const currentPeriod = PERIODS.find((period) => period.key === selectedPeriod) || PERIODS[1];
+    const availableHours = startOptionsForPeriod(currentPeriod);
+    if (availableHours.includes(selectedStartHour)) return;
+    const nextPeriod = availableHours.length > 0
+      ? currentPeriod
+      : PERIODS.find((period) => startOptionsForPeriod(period).length > 0);
+    if (!nextPeriod) return;
+    const nextStart = startOptionsForPeriod(nextPeriod)[0];
+    setSelectedPeriod(nextPeriod.key);
+    setStartTime(hourToTime(nextStart));
+    setEndTime(hourToTime(nextPeriod.end));
+  }, [bookingDate, isOpen, nowMs, selectedPeriod, selectedStartHour]);
 
   const choosePeriod = (period: Period) => {
+    const availableHours = startOptionsForPeriod(period);
+    if (availableHours.length === 0) return;
     setSelectedPeriod(period.key);
-    setStartTime(hourToTime(period.start));
+    setStartTime(hourToTime(availableHours[0]));
     setEndTime(hourToTime(period.end));
   };
 
@@ -174,6 +229,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
   const submitBooking = async (user: UserProfile) => {
     if (!targetOwnerId) throw new Error('بيانات مالك القاعة أو مزود الخدمة غير مكتملة.');
     if (user.id === targetOwnerId) throw new Error('لا يمكنك حجز قاعتك أو خدمتك الخاصة.');
+    if (selectedPast) throw new Error('لا يمكن حجز تاريخ أو وقت مضى. اختر موعداً لاحقاً.');
     if (selectedBooked) throw new Error('هذا الموعد محجوز. اختر فترة أو تاريخاً آخر.');
     await onSubmitBooking({
       itemType: item.type, itemId: item.data.id, itemName: item.data.name, itemLocation: item.data.location,
@@ -208,6 +264,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
     if (!bookingDate) return setErrorMsg('اختر تاريخ الحجز.');
     if (availabilityLoading) return setErrorMsg('انتظر حتى يكتمل فحص المواعيد.');
     if (isSelfBooking) return setErrorMsg('لا يمكنك حجز قاعتك أو خدمتك الخاصة.');
+    if (selectedPast) return setErrorMsg('لا يمكن حجز تاريخ أو وقت مضى. اختر موعداً لاحقاً.');
     if (selectedBooked) return setErrorMsg('هذا الموعد محجوز.');
     setIsLoading(true);
     try {
@@ -240,7 +297,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
       <div className="bg-white rounded-3xl max-w-lg w-full max-h-[92vh] overflow-y-auto shadow-2xl my-auto">
         <div id="guest-booking-recaptcha" />
         <div className="p-4 bg-gradient-to-r from-emerald-800 to-emerald-900 text-white flex items-center justify-between rounded-t-3xl">
-          <div className="flex gap-2"><WednakLogo className="w-9 h-9 ring-1 ring-white/25 shadow-sm"/><div><h2 className="text-base font-bold">{currentUser.isGuest ? 'أكمل حجزك كضيف' : 'طلب حجز جديد'}</h2><p className="text-xs text-amber-200">{item.data.name}</p></div></div>
+          <div className="flex gap-2"><WednakLogo className="w-10 h-10"/><div><h2 className="text-base font-bold">{currentUser.isGuest ? 'أكمل حجزك كضيف' : 'طلب حجز جديد'}</h2><p className="text-xs text-amber-200">{item.data.name}</p></div></div>
           <button onClick={onClose} className="p-1.5 rounded-full bg-white/10"><X className="w-5 h-5"/></button>
         </div>
         {isSelfBooking && <div className="m-4 p-3 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs flex gap-2"><AlertTriangle className="w-5 h-5"/>لا يمكنك حجز نفسك.</div>}
@@ -248,27 +305,27 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
 
         {guestStep === 'details' ? <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 flex justify-between text-xs"><div>العربون <b className="block text-amber-900">{depositAmount.toLocaleString()} د.ع</b></div><div>السعر <b className="block text-emerald-800">{totalPrice.toLocaleString()} د.ع</b></div></div>
-          <div><label className="text-xs font-bold flex gap-1 mb-1"><Calendar className="w-4 h-4"/>التاريخ</label><input type="date" value={bookingDate} onChange={(e)=>setBookingDate(e.target.value)} min={new Date().toISOString().split('T')[0]} className="w-full px-3 py-2 border rounded-xl text-xs"/></div>
-          <div className="rounded-2xl border border-rose-200 bg-rose-50/60 p-3 space-y-2">
+          <div><label className="text-xs font-bold flex gap-1 mb-1"><Calendar className="w-4 h-4"/>التاريخ</label><input type="date" value={bookingDate} onChange={(e)=>setBookingDate(e.target.value)} min={getIraqTodayDate()} className="w-full px-3 py-2 border rounded-xl text-xs"/></div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <label className="text-xs font-black text-rose-900 flex items-center gap-1.5">
-                <Calendar className="w-4 h-4 text-rose-600" />
-                المواعيد والأوقات المحجوزة
+              <label className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                <Calendar className="w-4 h-4 text-emerald-700" />
+                حالة المواعيد والأوقات
               </label>
-              <span className="rounded-full border border-rose-200 bg-white px-2 py-0.5 text-[10px] font-bold text-rose-700">
+              <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-700">
                 {bookingDate}
               </span>
             </div>
             {availabilityLoading ? (
               <p className="rounded-xl bg-white px-3 py-2 text-[11px] font-bold text-gray-500">جاري تحميل المواعيد...</p>
-            ) : busyRanges.length === 0 ? (
+            ) : acceptedRanges.length === 0 && visiblePendingRanges.length === 0 ? (
               <div className="flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-bold text-emerald-800">
                 <CheckCircle className="w-4 h-4 shrink-0" />
-                لا توجد مواعيد محجوزة في هذا التاريخ.
+                لا توجد حجوزات مقبولة أو طلبات قيد المراجعة في هذا التاريخ.
               </div>
             ) : (
-              <div className="grid gap-1.5 sm:grid-cols-2">
-                {busyRanges.map((range) => (
+              <div className="grid gap-1.5">
+                {acceptedRanges.map((range) => (
                   <div key={`${range.start}-${range.end}`} className="flex items-center justify-between gap-2 rounded-xl border border-rose-300 bg-white px-3 py-2 text-[11px] font-black text-rose-900">
                     <span className="flex items-center gap-1.5">
                       <Clock className="w-3.5 h-3.5 shrink-0 text-rose-600" />
@@ -277,23 +334,36 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
                     <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[9px] text-rose-700">محجوز</span>
                   </div>
                 ))}
+                {visiblePendingRanges.map((range) => (
+                  <div key={`${range.startMinute}-${range.endMinute}`} className="flex items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] font-black text-amber-900">
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 shrink-0 text-amber-600" />
+                      {minuteLabel(range.startMinute)} - {minuteLabel(range.endMinute)}
+                    </span>
+                    <span className="rounded-full bg-amber-200/70 px-2 py-0.5 text-[9px] text-amber-800">قيد المراجعة{range.count > 1 ? ` (${range.count})` : ''}</span>
+                  </div>
+                ))}
               </div>
             )}
+            <p className="text-[9px] leading-4 text-slate-500">الأحمر محجوز نهائياً ولا يقبل طلباً آخر. البرتقالي قيد المراجعة ويمكن إرسال طلب منافس إلى أن يقبل المالك أحد الطلبات.</p>
           </div>
           <div>
   <label className="text-xs font-bold flex gap-1 mb-2"><Clock className="w-4 h-4"/>الفترة {availabilityLoading && <span className="text-gray-400">(جاري الفحص...)</span>}</label>
   <div className="grid grid-cols-3 gap-2 mb-3">
-    {PERIODS.map((period) => (
-      <button key={period.key} type="button" disabled={availabilityLoading} onClick={() => choosePeriod(period)} className={`p-2.5 rounded-xl border text-xs font-bold ${selectedPeriod === period.key ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-gray-50 text-gray-800'}`}>
+    {PERIODS.map((period) => {
+      const periodPast = startOptionsForPeriod(period).length === 0;
+      return (
+      <button key={period.key} type="button" disabled={availabilityLoading || periodPast} onClick={() => choosePeriod(period)} className={`p-2.5 rounded-xl border text-xs font-bold ${periodPast ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : selectedPeriod === period.key ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-gray-50 text-gray-800'}`}>
         {period.label}
         <span className="block text-[9px] mt-0.5 opacity-80">{hourLabel(period.start)} - {hourLabel(period.end)}</span>
+        {periodPast && <span className="block text-[8px] mt-0.5">انتهت</span>}
       </button>
-    ))}
+    )})}
   </div>
   <div className="grid grid-cols-2 gap-3">
     <div>
       <label className="text-[11px] font-bold text-gray-600 block mb-1">من الساعة</label>
-      <select value={startTime} onChange={(e) => { const next = e.target.value; setStartTime(next); const h = Number(next.slice(0,2)) + (selectedPeriod === 'night' && Number(next.slice(0,2)) < 6 ? 24 : 0); if (endOptions.length === 0 || minutesForRange(next, endTime).length === 0) setEndTime(hourToTime(h + 1)); }} className="w-full px-3 py-2.5 border rounded-xl text-xs bg-white">
+      <select value={startTime} onChange={(e) => { const next = e.target.value; setStartTime(next); const h = Number(next.slice(0,2)) + (selectedPeriod === 'night' && Number(next.slice(0,2)) < 6 ? 24 : 0); if (endOptions.length === 0 || minutesForRange(next, endTime, selectedPeriod).length === 0) setEndTime(hourToTime(h + 1)); }} className="w-full px-3 py-2.5 border rounded-xl text-xs bg-white">
         {startOptions.map((h) => <option key={h} value={hourToTime(h)}>{hourLabel(h)}</option>)}
       </select>
     </div>
@@ -304,15 +374,15 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
       </select>
     </div>
   </div>
-  <div className={`mt-2 p-2 rounded-xl text-[10px] font-bold ${selectedBooked ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
-    {selectedBooked ? 'الوقت المختار يتداخل مع حجز مؤكد. اختر وقتاً آخر.' : 'الوقت المختار متاح حالياً.'}
+  <div className={`mt-2 p-2 rounded-xl text-[10px] font-bold ${selectedPast ? 'bg-gray-100 text-gray-600 border border-gray-300' : selectedBooked ? 'bg-rose-50 text-rose-700 border border-rose-200' : selectedPending ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+    {selectedPast ? 'هذا الوقت مضى حسب توقيت بغداد ولا يمكن حجزه.' : selectedBooked ? 'الوقت المختار يتداخل مع حجز مقبول. اختر وقتاً آخر.' : selectedPending ? 'يوجد طلب قيد المراجعة لهذا الوقت، ويمكنك إرسال طلبك أيضاً.' : 'الوقت المختار متاح حالياً.'}
   </div>
 </div>
 {isHall && hall && <div><div className="flex justify-between text-xs font-bold"><span><Users className="inline w-4 h-4"/> عدد الضيوف</span><span>{effectiveGuests}</span></div><input type="range" min={1} max={hall.capacity} step={10} value={effectiveGuests} onChange={(e)=>setGuestsCount(Number(e.target.value))} className="w-full accent-emerald-700"/></div>}
           <div className="grid sm:grid-cols-2 gap-3"><div><label className="text-xs font-bold"><User className="inline w-4 h-4"/> الاسم</label><input value={customerName} onChange={(e)=>setCustomerName(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs" required/></div><div><label className="text-xs font-bold"><Phone className="inline w-4 h-4"/> الهاتف</label><input type="tel" inputMode="numeric" maxLength={11} value={customerPhone} onChange={(e)=>setCustomerPhone(toEnglishDigits(e.target.value).replace(/\D/g, '').slice(0, 11))} placeholder="07701234567" className="w-full px-3 py-2 border rounded-xl text-xs dir-ltr" required/></div></div>
           <div><label className="text-xs font-bold"><FileText className="inline w-4 h-4"/> ملاحظات</label><textarea value={notes} onChange={(e)=>setNotes(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs h-16"/></div>
           <div className="p-2.5 bg-gray-50 border rounded-xl text-[11px] text-gray-600 flex gap-2"><ShieldCheck className="w-4 h-4 text-emerald-600"/>{currentUser.isGuest?'سنرسل OTP حقيقي ونربط الحجز بهويتك.':'الحجز خاص بك وبالطرف المستلم فقط.'}</div>
-          <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className="px-4 py-2 text-xs">إلغاء</button><button disabled={isLoading||isSelfBooking||selectedBooked||availabilityLoading} className="px-5 py-2 bg-emerald-700 disabled:bg-gray-400 text-white rounded-xl text-xs font-bold flex gap-1"><WalletCards className="w-4 h-4"/>{isLoading?'جاري التنفيذ...':currentUser.isGuest?'إرسال OTP':'دفع العربون'}</button></div>
+          <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className="px-4 py-2 text-xs">إلغاء</button><button disabled={isLoading||isSelfBooking||selectedBooked||selectedPast||availabilityLoading} className="px-5 py-2 bg-emerald-700 disabled:bg-gray-400 text-white rounded-xl text-xs font-bold flex gap-1"><WalletCards className="w-4 h-4"/>{isLoading?'جاري التنفيذ...':currentUser.isGuest?'إرسال OTP':'دفع العربون'}</button></div>
         </form> : guestStep==='otp_form' ? <form onSubmit={verifyGuestOtp} className="p-5 space-y-4"><div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs"><KeyRound className="inline w-4 h-4"/> أدخل الرمز الحقيقي المرسل إلى {customerPhone}</div><input value={otpCode} onChange={(e)=>setOtpCode(e.target.value)} inputMode="numeric" maxLength={6} className="w-full px-3 py-2 border rounded-xl text-center text-xl tracking-widest" placeholder="000000"/><div className="flex justify-between"><button type="button" onClick={()=>setGuestStep('details')} className="text-xs flex gap-1"><ArrowRight className="w-4 h-4"/>تغيير الرقم</button><button disabled={isLoading} className="px-5 py-2 bg-emerald-800 text-white rounded-xl text-xs font-bold">{isLoading?'جاري التحقق...':'الانتقال للدفع'}</button></div></form> : <div className="p-5 space-y-4"><div className="text-center"><WalletCards className="w-10 h-10 mx-auto text-emerald-700"/><h3 className="font-black mt-2">دفع العربون</h3><p className="text-2xl font-black text-amber-700">{depositAmount.toLocaleString()} د.ع</p></div><div className="grid grid-cols-2 gap-3">{(['زين كاش','Qi Card'] as const).map(method=><button key={method} onClick={()=>setPaymentMethod(method)} className={`p-4 border-2 rounded-2xl font-bold text-sm ${paymentMethod===method?'border-emerald-700 bg-emerald-50':'border-gray-200'}`}><CreditCard className="w-5 h-5 mx-auto mb-2"/>{method}</button>)}</div><div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900">سيُسجل الطلب بانتظار الدفع إلى أن يتم ربط حساب التاجر الرسمي ببوابة {paymentMethod}. لن نعتبر العربون مدفوعاً دون تأكيد حقيقي من بوابة الدفع.</div><button disabled={isLoading||!bookingUser} onClick={async()=>{if(!bookingUser)return;setIsLoading(true);try{await submitBooking(bookingUser);onClose()}catch(err){setErrorMsg(err instanceof Error?err.message:'تعذر إرسال الحجز')}finally{setIsLoading(false)}}} className="w-full py-3 bg-emerald-700 text-white rounded-xl font-bold text-xs">{isLoading?'جاري إرسال الطلب...':`اختيار ${paymentMethod} وإرسال الطلب`}</button></div>}
       </div>
     </div>

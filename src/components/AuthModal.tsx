@@ -235,7 +235,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         <div className="p-5 bg-gradient-to-r from-emerald-900 via-emerald-800 to-amber-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <WednakLogo className="w-9 h-9 ring-1 ring-white/25 shadow-sm" />
+            <WednakLogo className="w-10 h-10" />
             <div>
               <h2 className="text-base font-bold">الدخول إلى Wedنك</h2>
               <p className="text-[11px] text-amber-200">تصفح كضيف أو سجل برقم هاتفك الحقيقي</p>

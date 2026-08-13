@@ -16,6 +16,7 @@ import {
   deleteDoc,
   writeBatch,
   arrayUnion,
+  Timestamp,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import {
@@ -106,7 +107,8 @@ export function getSlotTimeRange(timeSlot: string, startTimeStr?: string, endTim
     else if (timeSlot.includes('ليلي')) { start = '23:00'; end = '02:00'; }
     else { start = '18:00'; end = '23:00'; }
   }
-  const startMins = parseTimeToMinutes(start);
+  let startMins = parseTimeToMinutes(start);
+  if (timeSlot.includes('ليلي') && startMins < 360) startMins += 1440;
   let endMins = parseTimeToMinutes(end);
   if (endMins <= startMins) endMins += 1440;
   return { start, end, startMins, endMins };
@@ -117,6 +119,42 @@ export function checkTimeOverlap(
   b: { startMins: number; endMins: number }
 ): boolean {
   return a.startMins < b.endMins && a.endMins > b.startMins;
+}
+
+const IRAQ_TIME_ZONE = 'Asia/Baghdad';
+const IRAQ_UTC_OFFSET = '+03:00';
+
+export function getIraqTodayDate(now = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: IRAQ_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value || '';
+  return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
+export function getIraqDateAfterDays(days: number, now = new Date()): string {
+  const [year, month, day] = getIraqTodayDate(now).split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+}
+
+export function getIraqBookingStartDate(date: string, time: string, dayOffset = 0): Date {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) {
+    throw new Error('تاريخ أو وقت الحجز غير صحيح.');
+  }
+  const [year, month, day] = date.split('-').map(Number);
+  const adjustedDate = new Date(Date.UTC(year, month - 1, day + dayOffset));
+  const adjustedDateKey = `${adjustedDate.getUTCFullYear()}-${String(adjustedDate.getUTCMonth() + 1).padStart(2, '0')}-${String(adjustedDate.getUTCDate()).padStart(2, '0')}`;
+  const value = new Date(`${adjustedDateKey}T${time}:00${IRAQ_UTC_OFFSET}`);
+  if (!Number.isFinite(value.getTime())) throw new Error('تاريخ أو وقت الحجز غير صحيح.');
+  return value;
+}
+
+export function isIraqBookingStartInFuture(date: string, time: string, now = Date.now(), dayOffset = 0): boolean {
+  return getIraqBookingStartDate(date, time, dayOffset).getTime() > now;
 }
 
 function lockSegments(itemId: string, date: string, startMins: number, endMins: number) {
@@ -269,6 +307,67 @@ export function subscribeAvailability(itemId: string, date: string, callback: (b
   }, (err) => { console.error('Availability listener failed:', err); callback([]); });
 }
 
+export interface PendingAvailabilityRange {
+  bookingId: string;
+  startMinute: number;
+  endMinute: number;
+}
+
+export interface BookingAvailabilitySnapshot {
+  acceptedMinutes: number[];
+  pendingRanges: PendingAvailabilityRange[];
+}
+
+export function subscribeBookingAvailability(
+  itemId: string,
+  date: string,
+  callback: (availability: BookingAvailabilitySnapshot) => void
+) {
+  if (!itemId || !date) {
+    callback({ acceptedMinutes: [], pendingRanges: [] });
+    return () => {};
+  }
+
+  let acceptedMinutes: number[] = [];
+  let pendingRanges: PendingAvailabilityRange[] = [];
+  const emit = () => callback({ acceptedMinutes: [...acceptedMinutes], pendingRanges: [...pendingRanges] });
+  const locksQuery = query(collection(db, 'bookingLocks'), where('itemId', '==', itemId), where('date', '==', date));
+  const pendingQuery = query(collection(db, 'bookingAvailability'), where('itemId', '==', itemId), where('date', '==', date));
+
+  const unsubscribeLocks = onSnapshot(locksQuery, (snap) => {
+    acceptedMinutes = snap.docs.map((item) => Number(item.data().minute)).filter(Number.isFinite);
+    emit();
+  }, (error) => {
+    console.error('Accepted availability listener failed:', error);
+    acceptedMinutes = [];
+    emit();
+  });
+
+  const unsubscribePending = onSnapshot(pendingQuery, (snap) => {
+    pendingRanges = snap.docs.flatMap((item) => {
+      const data = item.data();
+      const startMinute = Number(data.startMinute);
+      const endMinute = Number(data.endMinute);
+      if (!pendingStatusValue(data.status) || !Number.isFinite(startMinute) || !Number.isFinite(endMinute) || endMinute <= startMinute) return [];
+      return [{ bookingId: String(data.bookingId || item.id), startMinute, endMinute }];
+    });
+    emit();
+  }, (error) => {
+    console.error('Pending availability listener failed:', error);
+    pendingRanges = [];
+    emit();
+  });
+
+  return () => {
+    unsubscribeLocks();
+    unsubscribePending();
+  };
+}
+
+function pendingStatusValue(status: unknown): boolean {
+  return status === 'قيد المراجعة' || status === 'pending';
+}
+
 export async function createBookingInFirestore(bookingData: {
   itemType: 'hall' | 'provider'; itemId: string; itemName: string; itemLocation: string; itemImage: string;
   date: string; timeSlot: string; startTime?: string; endTime?: string; guests?: number;
@@ -282,13 +381,12 @@ export async function createBookingInFirestore(bookingData: {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(bookingData.date)) throw new Error('تاريخ الحجز غير صحيح.');
 
   const range = getSlotTimeRange(bookingData.timeSlot, bookingData.startTime, bookingData.endTime);
+  const startsAt = getIraqBookingStartDate(bookingData.date, range.start, Math.floor(range.startMins / 1440));
+  if (startsAt.getTime() <= Date.now()) throw new Error('لا يمكن حجز تاريخ أو وقت مضى. اختر موعداً لاحقاً.');
   const segments = lockSegments(bookingData.itemId, bookingData.date, range.startMins, range.endMins);
-  for (const segment of segments) {
-    const lock = await getDoc(doc(db, 'bookingLocks', segment.id));
-    if (lock.exists()) throw new Error('هذا الموعد محجوز. يرجى اختيار وقت آخر.');
-  }
 
   const ref = doc(collection(db, 'bookings'));
+  const availabilityRef = doc(db, 'bookingAvailability', ref.id);
   const now = new Date().toISOString();
   const booking: Booking = {
     id: ref.id,
@@ -325,8 +423,30 @@ export async function createBookingInFirestore(bookingData: {
     paymentMethod: bookingData.paymentMethod || 'الدفع لاحقاً',
     paymentReference: bookingData.paymentReference || '',
   };
-  const firestoreSafeBooking = removeUndefinedDeep(booking);
-  try { await setDoc(ref, firestoreSafeBooking); return booking; }
+  const firestoreSafeBooking = {
+    ...removeUndefinedDeep(booking),
+    startsAt: Timestamp.fromDate(startsAt),
+  };
+  try {
+    await runTransaction(db, async (tx) => {
+      const lockRefs = segments.map((segment) => doc(db, 'bookingLocks', segment.id));
+      const lockSnaps = await Promise.all(lockRefs.map((lockRef) => tx.get(lockRef)));
+      if (lockSnaps.some((lockSnap) => lockSnap.exists())) {
+        throw new Error('هذا الموعد محجوز بحجز مقبول. يرجى اختيار وقت آخر.');
+      }
+      tx.set(ref, firestoreSafeBooking);
+      tx.set(availabilityRef, {
+        bookingId: ref.id,
+        itemId: bookingData.itemId,
+        date: bookingData.date,
+        startMinute: range.startMins,
+        endMinute: range.endMins,
+        status: 'قيد المراجعة',
+        createdAt: now,
+      });
+    });
+    return booking;
+  }
   catch (err) { return handleFirestoreError(err, OperationType.CREATE, `bookings/${ref.id}`); }
 }
 
@@ -344,6 +464,9 @@ export async function acceptBookingInFirestore(bookingId: string): Promise<void>
       if (booking.targetOwnerId !== user.uid && !admin) throw new Error('ليس لديك صلاحية قبول هذا الحجز.');
       if (booking.status !== 'قيد المراجعة' && booking.status !== 'pending') throw new Error('تم تغيير حالة الحجز سابقاً.');
       const range = getSlotTimeRange(booking.timeSlot, booking.startTime, booking.endTime);
+      const storedStartsAt = dateValueMillis((booking as Booking & { startsAt?: unknown }).startsAt);
+      const startsAt = storedStartsAt || getIraqBookingStartDate(booking.date, range.start, Math.floor(range.startMins / 1440)).getTime();
+      if (startsAt <= Date.now()) throw new Error('انتهى موعد هذا الطلب ولا يمكن قبوله. اطلب من الزبون اختيار موعد جديد.');
       const segments = lockSegments(booking.itemId, booking.date, range.startMins, range.endMins);
       const lockRefs = segments.map((s) => doc(db, 'bookingLocks', s.id));
       const lockSnaps = await Promise.all(lockRefs.map((lockRef) => tx.get(lockRef)));
@@ -356,6 +479,7 @@ export async function acceptBookingInFirestore(bookingId: string): Promise<void>
         targetOwnerId: booking.targetOwnerId,
         createdAt: new Date().toISOString(),
       }));
+      tx.delete(doc(db, 'bookingAvailability', bookingId));
       tx.update(bookingRef, { status: 'مقبول', updatedAt: new Date().toISOString() });
     });
   } catch (err) { handleFirestoreError(err, OperationType.UPDATE, `bookings/${bookingId}`); }
@@ -373,6 +497,7 @@ export async function rejectBookingInFirestore(bookingId: string): Promise<void>
       const role=userSnap.exists()?(userSnap.data() as UserProfile).accountType:'';
       if (booking.targetOwnerId !== user.uid && role!=='مدير' && role!=='مدير Admin') throw new Error('ليس لديك صلاحية رفض هذا الحجز.');
       if (booking.status !== 'قيد المراجعة' && booking.status !== 'pending') throw new Error('تم تغيير حالة الحجز سابقاً.');
+      tx.delete(doc(db, 'bookingAvailability', bookingId));
       tx.update(bookingRef, { status: 'مرفوض', updatedAt: new Date().toISOString() });
     });
   } catch (err) { handleFirestoreError(err, OperationType.UPDATE, `bookings/${bookingId}`); }
@@ -394,6 +519,7 @@ export async function cancelBookingInFirestore(bookingId: string): Promise<void>
       lockSnaps.forEach((lockSnap, index) => {
         if (lockSnap.exists() && lockSnap.data().bookingId === bookingId) tx.delete(lockRefs[index]);
       });
+      tx.delete(doc(db, 'bookingAvailability', bookingId));
       tx.update(bookingRef, { status: 'ملغي', updatedAt: new Date().toISOString() });
     });
   } catch (err) { handleFirestoreError(err, OperationType.UPDATE, `bookings/${bookingId}`); }

@@ -35,6 +35,16 @@ service cloud.firestore {
       return status in ['مرفوض', 'rejected'];
     }
 
+    function canManageAvailability(bookingId) {
+      return signedIn()
+        && existsAfter(/databases/$(database)/documents/bookings/$(bookingId))
+        && (
+          getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data.requesterId == request.auth.uid
+          || getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data.targetOwnerId == request.auth.uid
+          || isAdmin()
+        );
+    }
+
     function immutableBookingIdentity() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
         'status', 'updatedAt', 'cancelledAt', 'cancelledById', 'cancelledByRole',
@@ -53,7 +63,11 @@ service cloud.firestore {
       return resource.data.targetOwnerId == request.auth.uid
         && (
           (pendingStatus(resource.data.status)
-            && (acceptedStatus(request.resource.data.status) || rejectedStatus(request.resource.data.status)))
+            && (
+              rejectedStatus(request.resource.data.status)
+              || (acceptedStatus(request.resource.data.status)
+                && (!('startsAt' in resource.data) || resource.data.startsAt > request.time))
+            ))
           ||
           (acceptedStatus(resource.data.status)
             && (cancelledStatus(request.resource.data.status) || request.resource.data.status == 'completed'))
@@ -98,7 +112,9 @@ service cloud.firestore {
         && request.resource.data.requesterId == request.auth.uid
         && request.resource.data.customerId == request.auth.uid
         && request.resource.data.requesterId != request.resource.data.targetOwnerId
-        && pendingStatus(request.resource.data.status);
+        && pendingStatus(request.resource.data.status)
+        && request.resource.data.startsAt is timestamp
+        && request.resource.data.startsAt > request.time;
 
       allow read: if signedIn()
         && (resource.data.requesterId == request.auth.uid
@@ -129,6 +145,30 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/bookings/$(resource.data.bookingId)).data.requesterId == request.auth.uid
         )
       );
+    }
+
+    // Public pending-time indicators contain no customer identity or contact details.
+    // They inform users without reserving the time; only bookingLocks block a slot.
+    match /bookingAvailability/{bookingId} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          'bookingId', 'itemId', 'date', 'startMinute', 'endMinute', 'status', 'createdAt'
+        ])
+        && request.resource.data.bookingId == bookingId
+        && pendingStatus(request.resource.data.status)
+        && request.resource.data.startMinute is int
+        && request.resource.data.endMinute is int
+        && request.resource.data.startMinute >= 0
+        && request.resource.data.endMinute > request.resource.data.startMinute
+        && request.resource.data.endMinute <= 2880
+        && existsAfter(/databases/$(database)/documents/bookings/$(bookingId))
+        && getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data.requesterId == request.auth.uid
+        && pendingStatus(getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data.status)
+        && request.resource.data.itemId == getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data.itemId
+        && request.resource.data.date == getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data.date;
+      allow update: if false;
+      allow delete: if canManageAvailability(bookingId);
     }
 
     match /halls/{hallId} {
