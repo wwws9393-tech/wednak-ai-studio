@@ -79,6 +79,10 @@ service cloud.firestore {
       match /notificationState/{stateId} {
         allow read, create, update, delete: if isSelf(userId);
       }
+
+      match /pushTokens/{tokenId} {
+        allow read, create, update, delete: if isSelf(userId);
+      }
     }
 
     match /deletedUsers/{userId} {
