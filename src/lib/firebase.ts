@@ -469,7 +469,7 @@ export async function mergeLegacyNotificationReadIds(uid: string, notificationId
       }, { merge: true });
     }
   } catch (err) {
-    console.warn('Legacy notification read-state migration skipped:', err);
+    handleFirestoreError(err, OperationType.WRITE, `users/${uid}/notificationState/readState`);
   }
 }
 
