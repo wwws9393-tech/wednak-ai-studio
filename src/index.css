@@ -156,6 +156,40 @@
   cursor: pointer;
 }
 
+.wednak-booking-overlay {
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+
+.wednak-booking-sheet {
+  box-sizing: border-box;
+  max-width: min(32rem, calc(100vw - 1rem));
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-text-size-adjust: 100%;
+}
+
+.wednak-booking-date-input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  direction: ltr;
+  text-align: left;
+}
+
+@media (max-width: 640px) {
+  .wednak-booking-sheet input,
+  .wednak-booking-sheet select,
+  .wednak-booking-sheet textarea {
+    min-width: 0;
+    max-width: 100%;
+    font-size: 16px;
+    touch-action: manipulation;
+  }
+}
+
 @keyframes wednak-auth-arrive { from { opacity: 0; transform: translateY(16px) scale(.975); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes wednak-auth-drift { 0%,100% { transform: translate3d(0,0,0) scale(1); } 50% { transform: translate3d(12px,-12px,0) scale(1.06); } }
 

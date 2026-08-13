@@ -143,6 +143,20 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
   }, [isOpen, currentUser.id, currentUser.isGuest, currentUser.name, currentUser.phone]);
 
   useEffect(() => {
+    if (!isOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [isOpen, onClose]);
+
+  useEffect(() => {
     if (!isOpen || !item?.data.id || !bookingDate) {
       setAcceptedMinutes([]);
       setPendingRanges([]);
@@ -318,8 +332,17 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 overflow-y-auto">
-      <div className="bg-white rounded-3xl max-w-lg w-full max-h-[92vh] overflow-y-auto shadow-2xl my-auto">
+    <div
+      className="wednak-booking-overlay fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/60 p-2 backdrop-blur-sm sm:p-3"
+      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+    >
+      <div
+        className="wednak-booking-sheet max-h-[calc(100dvh-1rem)] w-full max-w-lg min-w-0 overflow-x-hidden overflow-y-auto rounded-3xl bg-white shadow-2xl sm:max-h-[92vh]"
+        role="dialog"
+        aria-modal="true"
+        aria-label="طلب حجز جديد"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div id="guest-booking-recaptcha" />
         <div className="p-4 bg-gradient-to-r from-emerald-800 to-emerald-900 text-white flex items-center justify-between rounded-t-3xl">
           <div className="flex gap-2"><WednakLogo className="w-10 h-10"/><div><h2 className="text-base font-bold">{currentUser.isGuest ? 'أكمل حجزك كضيف' : 'طلب حجز جديد'}</h2><p className="text-xs text-amber-200">{item.data.name}</p></div></div>
@@ -332,7 +355,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
           <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 flex justify-between text-xs"><div>العربون <b className="block text-amber-900">{depositAmount.toLocaleString()} د.ع</b></div><div>السعر <b className="block text-emerald-800">{totalPrice.toLocaleString()} د.ع</b></div></div>
           <div>
             <label htmlFor="booking-date" className="text-xs font-bold flex gap-1 mb-1 cursor-pointer" onClick={openDatePicker}><Calendar className="w-4 h-4"/>التاريخ</label>
-            <div className="relative cursor-pointer" onClick={openDatePicker}>
+            <div className="relative min-w-0 max-w-full cursor-pointer overflow-hidden rounded-xl" onClick={openDatePicker}>
               <input
                 ref={dateInputRef}
                 id="booking-date"
