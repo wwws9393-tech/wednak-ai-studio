@@ -3,7 +3,6 @@ import {
   X,
   User,
   Phone,
-  Sparkles,
   Building2,
   Camera,
   LogOut,
@@ -17,6 +16,7 @@ import { ConfirmationResult, RecaptchaVerifier, signInWithPhoneNumber, signOut }
 import { AccountType, UserProfile } from '../types';
 import { GUEST_ANONYMOUS_USER } from '../data/usersDatabase';
 import { auth, fetchUserFromFirestore, saveUserToFirestore } from '../lib/firebase';
+import { WednakLogo } from './WednakLogo';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -235,9 +235,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         <div className="p-5 bg-gradient-to-r from-emerald-900 via-emerald-800 to-amber-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-300 flex items-center justify-center">
-              <Sparkles className="w-5 h-5" />
-            </div>
+            <WednakLogo className="w-9 h-9 ring-1 ring-white/25 shadow-sm" />
             <div>
               <h2 className="text-base font-bold">الدخول إلى Wedنك</h2>
               <p className="text-[11px] text-amber-200">تصفح كضيف أو سجل برقم هاتفك الحقيقي</p>

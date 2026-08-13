@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Calendar, Clock, Users, Phone, User, FileText, CheckCircle, AlertTriangle, Sparkles, ShieldCheck, AlertCircle, KeyRound, ArrowRight, CreditCard, WalletCards } from 'lucide-react';
+import { X, Calendar, Clock, Users, Phone, User, FileText, CheckCircle, AlertTriangle, ShieldCheck, AlertCircle, KeyRound, ArrowRight, CreditCard, WalletCards } from 'lucide-react';
 import { ConfirmationResult, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 import { Hall, ServiceProvider, UserProfile, Booking } from '../types';
 import { auth, fetchUserFromFirestore, saveUserToFirestore, subscribeAvailability } from '../lib/firebase';
+import { WednakLogo } from './WednakLogo';
 
 interface BookingModalProps {
   item: { type: 'hall'; data: Hall } | { type: 'provider'; data: ServiceProvider } | null;
@@ -37,6 +38,37 @@ function hourLabel(hour: number): string {
   const suffix = h < 12 ? 'ص' : 'م';
   const display = h % 12 || 12;
   return `${display}:00 ${suffix}`;
+}
+
+function minuteLabel(totalMinutes: number): string {
+  const normalized = ((totalMinutes % 1440) + 1440) % 1440;
+  const hour = Math.floor(normalized / 60);
+  const minute = normalized % 60;
+  const suffix = hour < 12 ? 'ص' : 'م';
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${String(minute).padStart(2, '0')} ${suffix}`;
+}
+
+function mergeBusyMinutes(minutes: number[]): Array<{ start: number; end: number }> {
+  const sorted = Array.from(new Set(minutes.filter(Number.isFinite))).sort((a, b) => a - b);
+  if (sorted.length === 0) return [];
+
+  const ranges: Array<{ start: number; end: number }> = [];
+  let start = sorted[0];
+  let end = start + 30;
+
+  for (const minute of sorted.slice(1)) {
+    if (minute === end) {
+      end += 30;
+      continue;
+    }
+    ranges.push({ start, end });
+    start = minute;
+    end = minute + 30;
+  }
+
+  ranges.push({ start, end });
+  return ranges;
 }
 
 function minutesForRange(startTime: string, endTime: string): number[] {
@@ -115,6 +147,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
 
   const selectedPeriodConfig = useMemo(() => PERIODS.find((p) => p.key === selectedPeriod) || PERIODS[1], [selectedPeriod]);
   const busySet = useMemo(() => new Set(busyMinutes), [busyMinutes]);
+  const busyRanges = useMemo(() => mergeBusyMinutes(busyMinutes), [busyMinutes]);
   const selectedMinutes = useMemo(() => minutesForRange(startTime, endTime), [startTime, endTime]);
   const selectedBooked = selectedMinutes.some((minute) => busySet.has(minute));
   const timeSlot = `${selectedPeriodConfig.label} (${hourLabel(Number(startTime.slice(0, 2)))} - ${hourLabel(Number(endTime.slice(0, 2)) || 24)})`;
@@ -207,7 +240,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
       <div className="bg-white rounded-3xl max-w-lg w-full max-h-[92vh] overflow-y-auto shadow-2xl my-auto">
         <div id="guest-booking-recaptcha" />
         <div className="p-4 bg-gradient-to-r from-emerald-800 to-emerald-900 text-white flex items-center justify-between rounded-t-3xl">
-          <div className="flex gap-2"><Sparkles className="w-5 h-5 text-amber-300"/><div><h2 className="text-base font-bold">{currentUser.isGuest ? 'أكمل حجزك كضيف' : 'طلب حجز جديد'}</h2><p className="text-xs text-amber-200">{item.data.name}</p></div></div>
+          <div className="flex gap-2"><WednakLogo className="w-9 h-9 ring-1 ring-white/25 shadow-sm"/><div><h2 className="text-base font-bold">{currentUser.isGuest ? 'أكمل حجزك كضيف' : 'طلب حجز جديد'}</h2><p className="text-xs text-amber-200">{item.data.name}</p></div></div>
           <button onClick={onClose} className="p-1.5 rounded-full bg-white/10"><X className="w-5 h-5"/></button>
         </div>
         {isSelfBooking && <div className="m-4 p-3 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs flex gap-2"><AlertTriangle className="w-5 h-5"/>لا يمكنك حجز نفسك.</div>}
@@ -216,6 +249,37 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
         {guestStep === 'details' ? <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 flex justify-between text-xs"><div>العربون <b className="block text-amber-900">{depositAmount.toLocaleString()} د.ع</b></div><div>السعر <b className="block text-emerald-800">{totalPrice.toLocaleString()} د.ع</b></div></div>
           <div><label className="text-xs font-bold flex gap-1 mb-1"><Calendar className="w-4 h-4"/>التاريخ</label><input type="date" value={bookingDate} onChange={(e)=>setBookingDate(e.target.value)} min={new Date().toISOString().split('T')[0]} className="w-full px-3 py-2 border rounded-xl text-xs"/></div>
+          <div className="rounded-2xl border border-rose-200 bg-rose-50/60 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-xs font-black text-rose-900 flex items-center gap-1.5">
+                <Calendar className="w-4 h-4 text-rose-600" />
+                المواعيد والأوقات المحجوزة
+              </label>
+              <span className="rounded-full border border-rose-200 bg-white px-2 py-0.5 text-[10px] font-bold text-rose-700">
+                {bookingDate}
+              </span>
+            </div>
+            {availabilityLoading ? (
+              <p className="rounded-xl bg-white px-3 py-2 text-[11px] font-bold text-gray-500">جاري تحميل المواعيد...</p>
+            ) : busyRanges.length === 0 ? (
+              <div className="flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-bold text-emerald-800">
+                <CheckCircle className="w-4 h-4 shrink-0" />
+                لا توجد مواعيد محجوزة في هذا التاريخ.
+              </div>
+            ) : (
+              <div className="grid gap-1.5 sm:grid-cols-2">
+                {busyRanges.map((range) => (
+                  <div key={`${range.start}-${range.end}`} className="flex items-center justify-between gap-2 rounded-xl border border-rose-300 bg-white px-3 py-2 text-[11px] font-black text-rose-900">
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 shrink-0 text-rose-600" />
+                      {minuteLabel(range.start)} - {minuteLabel(range.end)}
+                    </span>
+                    <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[9px] text-rose-700">محجوز</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <div>
   <label className="text-xs font-bold flex gap-1 mb-2"><Clock className="w-4 h-4"/>الفترة {availabilityLoading && <span className="text-gray-400">(جاري الفحص...)</span>}</label>
   <div className="grid grid-cols-3 gap-2 mb-3">
