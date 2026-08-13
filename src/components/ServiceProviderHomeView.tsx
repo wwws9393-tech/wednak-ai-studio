@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Camera, Calendar, CheckCircle2, XCircle, Clock, Sparkles, Phone, MapPin, DollarSign, Save } from 'lucide-react';
+import { WednakLogo } from './WednakLogo';
 import { ServiceProvider, Booking, UserProfile, FeedPost } from '../types';
 
 interface ServiceProviderHomeViewProps {
@@ -20,26 +21,28 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
   onCreatePost,
 }) => {
   // Find service provider belonging to this user
-  const myProvider = serviceProviders.find(
-    (sp) => sp.id === currentUser.ownedProviderId || sp.ownerId === currentUser.id
-  ) || serviceProviders[0] || {
+  const fallbackProvider: ServiceProvider = {
     id: 'provider-fallback',
+    ownerId: currentUser.id,
     name: 'مزود خدمة تجريبي',
     serviceCategory: 'تصوير وفيديو',
     city: 'بغداد',
     location: 'بغداد',
-    priceStart: 500000,
-    priceStartFormatted: '500,000 د.ع',
     rating: 4.9,
     reviewsCount: 15,
-    images: ['https://images.unsplash.com/photo-1537633552985-df8429e8048b?auto=format&fit=crop&w=800&q=80'],
+    priceStart: 500000,
+    priceStartFormatted: '500,000 د.ع',
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
     coverImage: 'https://images.unsplash.com/photo-1537633552985-df8429e8048b?auto=format&fit=crop&w=800&q=80',
-    ownerId: currentUser.id,
+    portfolio: ['https://images.unsplash.com/photo-1537633552985-df8429e8048b?auto=format&fit=crop&w=800&q=80'],
     phone: currentUser.phone,
     description: 'تفاصيل الخدمة',
-    features: [],
-    isPromoted: false,
+    isVerified: false,
   };
+
+  const myProvider: ServiceProvider = serviceProviders.find(
+    (sp) => sp.id === currentUser.ownedProviderId || sp.ownerId === currentUser.id
+  ) || serviceProviders[0] || fallbackProvider;
 
   // Provider Filtered Bookings
   const providerBookings = bookings.filter(
@@ -128,7 +131,7 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
             className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-black font-extrabold text-xs rounded-2xl shadow-md transition-all flex items-center gap-1.5 shrink-0"
             id="provider-create-post-btn"
           >
-            <Sparkles className="w-4 h-4" />
+            <WednakLogo className="w-6 h-6 ring-1 ring-black/10" />
             <span>نشر أعمالك في Explore</span>
           </button>
         </div>

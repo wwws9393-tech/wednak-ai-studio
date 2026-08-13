@@ -30,6 +30,7 @@ import {
   fetchUserFromFirestore,
   saveUserToFirestore,
   subscribeBookings,
+  subscribeAllBookings,
   createBookingInFirestore,
   updateBookingStatusInFirestore,
   cancelBookingInFirestore,
@@ -41,12 +42,14 @@ import {
   seedInitialDataIfEmpty,
   subscribeHalls,
   subscribeServiceProviders,
+  updateServiceProviderInFirestore,
   subscribePosts,
   createPostInFirestore,
   updateHallInFirestore,
 } from './lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { Building2, Camera, Sparkles, MapPin, ArrowLeft, Heart, Search, Calendar, ShieldAlert } from 'lucide-react';
+import { WednakLogo } from './components/WednakLogo';
 
 const CITIES = ['جميع المحافظات', 'بغداد', 'أربيل', 'البصرة', 'النجف', 'كربلاء', 'الموصل', 'السليمانية'];
 
@@ -65,6 +68,7 @@ export function App() {
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [likedPostIds, setLikedPostIds] = useState<string[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [allBookings, setAllBookings] = useState<Booking[]>([]);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
@@ -77,11 +81,13 @@ export function App() {
     const unsubHalls = subscribeHalls(setHalls);
     const unsubProviders = subscribeServiceProviders(setServiceProviders);
     const unsubPosts = subscribePosts(setPosts);
+    const unsubAllBookings = subscribeAllBookings(setAllBookings);
 
     return () => {
       unsubHalls();
       unsubProviders();
       unsubPosts();
+      unsubAllBookings();
     };
   }, []);
 
@@ -262,6 +268,10 @@ export function App() {
     await updateHallInFirestore(updatedHall);
   };
 
+  const handleUpdateServiceProvider = async (updatedProvider: ServiceProvider) => {
+    await updateServiceProviderInFirestore(updatedProvider);
+  };
+
   // Filtered Items by City
   const filteredHalls = halls.filter(
     (h) => selectedCity === 'جميع المحافظات' || h.city === selectedCity
@@ -300,7 +310,7 @@ export function App() {
           currentUser={currentUser}
           serviceProviders={serviceProviders}
           bookings={bookings}
-          onUpdateServiceProvider={() => {}}
+          onUpdateProvider={handleUpdateServiceProvider}
           onUpdateBookingStatus={handleUpdateBookingStatus}
           onCreatePost={handleCreatePost}
         />
@@ -327,7 +337,7 @@ export function App() {
             <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-emerald-950 via-emerald-900 to-amber-950 p-6 sm:p-10 text-white shadow-xl border border-amber-500/20">
               <div className="relative z-10 max-w-2xl space-y-3">
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 text-xs font-bold border border-amber-500/30">
-                  <Sparkles className="w-3.5 h-3.5" />
+                  <WednakLogo className="w-6 h-6 ring-1 ring-white/20" />
                   منصة ويدنك العراقية لحجز الأعراس
                 </span>
                 <h1 className="text-2xl sm:text-4xl font-black text-amber-100 leading-tight">
@@ -348,7 +358,7 @@ export function App() {
                     onClick={() => setCurrentTab('explore')}
                     className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-2xl border border-white/20 transition-all flex items-center gap-2"
                   >
-                    <Sparkles className="w-4 h-4 text-amber-300" />
+                    <WednakLogo className="w-6 h-6 ring-1 ring-white/20" />
                     <span>تصفح عروض الاستكشاف</span>
                   </button>
                 </div>
@@ -507,7 +517,7 @@ export function App() {
             complaints={complaints}
             currentUser={currentUser}
             onSubmitComplaint={handleCreateComplaint}
-            isAdmin={currentUser.accountType === 'مدير Admin' || currentUser.accountType === 'مدير'}
+            isAdmin={false}
             onUpdateComplaintStatus={handleUpdateComplaintStatus}
           />
         );
@@ -557,8 +567,6 @@ export function App() {
       <BottomNav
         currentTab={currentTab}
         onSelectTab={setCurrentTab}
-        accountType={currentUser.accountType}
-        unreadNotificationsCount={notifications.filter((n) => !n.read).length}
         bookingsCount={bookings.length}
         favoritesCount={favoriteHalls.length + favoriteProviders.length}
       />
@@ -575,7 +583,7 @@ export function App() {
           setBookingItemForModal({ type: 'hall', data: hall });
         }}
         currentUser={currentUser}
-        bookings={bookings}
+        bookings={allBookings}
       />
 
       <ServiceProviderDetailsModal
@@ -584,10 +592,12 @@ export function App() {
         onClose={() => setSelectedProviderForModal(null)}
         isFavorite={selectedProviderForModal ? favoriteIds.includes(selectedProviderForModal.id) : false}
         onToggleFavorite={() => selectedProviderForModal && handleToggleFavorite(selectedProviderForModal.id, 'provider')}
-        onOpenBookingModal={(provider) => {
+        onBookProvider={(provider) => {
           setSelectedProviderForModal(null);
           setBookingItemForModal({ type: 'provider', data: provider });
         }}
+        currentUser={currentUser}
+        bookings={allBookings}
       />
 
       <BookingModal
@@ -595,7 +605,7 @@ export function App() {
         isOpen={!!bookingItemForModal}
         onClose={() => setBookingItemForModal(null)}
         currentUser={currentUser}
-        bookings={bookings}
+        bookings={allBookings}
         onLoginSuccess={handleLoginSuccess}
         onSubmitBooking={handleCreateBooking}
       />

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Building2, Calendar, CheckCircle2, XCircle, Clock, Plus, Sparkles, DollarSign, Users, MapPin, Save, AlertCircle } from 'lucide-react';
+import { WednakLogo } from './WednakLogo';
 import { Hall, Booking, UserProfile, FeedPost } from '../types';
 import { Coordinates, HallMap } from './HallMap';
 
@@ -153,7 +154,7 @@ export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({
               className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-black font-extrabold text-xs rounded-2xl shadow-md transition-all flex items-center gap-1.5"
               id="owner-create-post-btn"
             >
-              <Sparkles className="w-4 h-4" />
+              <WednakLogo className="w-6 h-6 ring-1 ring-black/10" />
               <span>نشر عرض في Explore</span>
             </button>
           </div>

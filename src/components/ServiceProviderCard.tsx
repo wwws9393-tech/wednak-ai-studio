@@ -84,7 +84,9 @@ export const ServiceProviderCard: React.FC<ServiceProviderCardProps> = ({
             >
               {provider.name}
               {provider.isVerified && (
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 fill-emerald-100 shrink-0" title="موثق" />
+                <span title="موثق" aria-label="مزود خدمة موثق">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 fill-emerald-100 shrink-0" />
+                </span>
               )}
             </h3>
           </div>

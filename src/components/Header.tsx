@@ -1,6 +1,7 @@
 import React from 'react';
-import { Heart, Bell, Search, User, Sparkles, MapPin, ShieldAlert } from 'lucide-react';
+import { Heart, Bell, Search, User, MapPin, ShieldAlert } from 'lucide-react';
 import { AccountType } from '../types';
+import { WednakLogo } from './WednakLogo';
 
 interface HeaderProps {
   currentTab: string;
@@ -39,9 +40,7 @@ export const Header: React.FC<HeaderProps> = ({
               className="flex items-center gap-2 group text-right focus:outline-none"
               id="brand-logo-btn"
             >
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-700 via-emerald-600 to-amber-600 flex items-center justify-center text-white shadow-md group-hover:scale-105 transition-transform">
-                <Sparkles className="w-5 h-5 text-amber-200" />
-              </div>
+              <WednakLogo className="w-10 h-10 shadow-md group-hover:scale-105 transition-transform" />
               <div className="flex flex-col">
                 <span className="font-bold text-xl text-emerald-900 tracking-tight flex items-center gap-1">
                   Wedنك <span className="text-amber-600 text-xs font-normal bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">ويدنك</span>

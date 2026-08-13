@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { X, User, Lock, Phone, Sparkles, Building2, Camera, LogOut, CheckCircle2, ShieldCheck, ArrowRight, Eye, KeyRound, ShieldAlert, Check } from 'lucide-react';
+import { X, User, Lock, Phone, Building2, Camera, LogOut, CheckCircle2, ShieldCheck, ArrowRight, Eye, KeyRound, ShieldAlert, Check } from 'lucide-react';
+import { WednakLogo } from './WednakLogo';
 import { AccountType, UserProfile } from '../types';
 import { fetchUserFromFirestore, findUserByPhoneFromFirestore, saveUserToFirestore, GUEST_ANONYMOUS_USER } from '../data/usersDatabase';
 import { ensureFirebaseAuth, auth } from '../lib/firebase';
@@ -148,9 +149,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* Header */}
         <div className="p-5 bg-gradient-to-r from-emerald-900 via-emerald-800 to-amber-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-300 flex items-center justify-center font-bold">
-              <Sparkles className="w-5 h-5" />
-            </div>
+            <WednakLogo className="w-9 h-9 ring-1 ring-white/20" />
             <div>
               <h2 className="text-base font-bold">تسجيل الدخول والدور في Wedنك</h2>
               <p className="text-[11px] text-amber-200">اختر طريقة الدخول للبدء بتصفح القاعات والخدمات</p>

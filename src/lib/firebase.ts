@@ -114,6 +114,21 @@ export function checkTimeOverlap(
   return range1.startMins < range2.endMins && range1.endMins > range2.startMins;
 }
 
+function isBlockingBookingStatus(status: BookingStatus): boolean {
+  return status === 'قيد المراجعة' ||
+    status === 'pending' ||
+    status === 'مقبول' ||
+    status === 'accepted';
+}
+
+function bookingSlotLockId(itemId: string, date: string, timeSlot: string): string {
+  return encodeURIComponent(`${itemId}__${date}__${timeSlot}`).replaceAll('%', '_');
+}
+
+function bookingSlotLockRef(itemId: string, date: string, timeSlot: string) {
+  return doc(db, 'bookingSlots', bookingSlotLockId(itemId, date, timeSlot));
+}
+
 // Safe Auth check (no anonymous sign in to avoid admin-restricted-operation errors)
 export async function ensureFirebaseAuth(): Promise<FirebaseUser | null> {
   if (auth.currentUser) return auth.currentUser;
@@ -210,7 +225,10 @@ export function subscribeBookings(
   return onSnapshot(
     q,
     (snap) => {
-      const list: Booking[] = snap.docs.map((d) => d.data() as Booking);
+      const list: Booking[] = snap.docs.map((d) => ({
+        ...(d.data() as Booking),
+        id: d.id,
+      }));
       list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
       callback(list);
     },
@@ -219,16 +237,41 @@ export function subscribeBookings(
       if (accountType === 'صاحب قاعة' || accountType === 'مزود خدمة') {
         const fallbackQ = query(bookingsRef, where('ownerId', '==', uid));
         onSnapshot(fallbackQ, (fSnap) => {
-          const list: Booking[] = fSnap.docs.map((d) => d.data() as Booking);
+          const list: Booking[] = fSnap.docs.map((d) => ({
+            ...(d.data() as Booking),
+            id: d.id,
+          }));
           callback(list);
         });
       } else if (accountType === 'زبون') {
         const fallbackQ = query(bookingsRef, where('customerId', '==', uid));
         onSnapshot(fallbackQ, (fSnap) => {
-          const list: Booking[] = fSnap.docs.map((d) => d.data() as Booking);
+          const list: Booking[] = fSnap.docs.map((d) => ({
+            ...(d.data() as Booking),
+            id: d.id,
+          }));
           callback(list);
         });
       }
+    }
+  );
+}
+
+// Public availability feed used only to show occupied periods. Booking cards
+// never expose the requester's name or phone in the availability UI.
+export function subscribeAllBookings(callback: (bookings: Booking[]) => void) {
+  return onSnapshot(
+    collection(db, 'bookings'),
+    (snap) => {
+      const list = snap.docs.map((d) => ({
+        ...(d.data() as Booking),
+        id: d.id,
+      }));
+      callback(list);
+    },
+    (error) => {
+      console.error('Availability bookings listener error:', error);
+      callback([]);
     }
   );
 }
@@ -277,16 +320,16 @@ export async function createBookingInFirestore(bookingData: {
     handleFirestoreError(err, OperationType.GET, 'bookings');
   }
 
-  const acceptedOverlaps = existingSnap!.docs
+  const blockingOverlap = existingSnap!.docs
     .map((d) => d.data() as Booking)
-    .filter((b) => b.status === 'مقبول' || b.status === 'accepted')
+    .filter((b) => isBlockingBookingStatus(b.status))
     .some((b) => {
       const bRange = getSlotTimeRange(b.timeSlot, (b as any).startTime, (b as any).endTime);
       return checkTimeOverlap(range, bRange);
     });
 
-  if (acceptedOverlaps) {
-    throw new Error('عذراً، هذا الموعد محجوز بالكامل ومأكود لهذا اليوم. يرجى اختيار تاريخ أو فترة زمنية أخرى.');
+  if (blockingOverlap) {
+    throw new Error('عذراً، هذا الموعد محجوز لهذا اليوم. يرجى اختيار تاريخ أو فترة زمنية أخرى.');
   }
 
   const newDocRef = doc(collection(db, 'bookings'));
@@ -325,9 +368,33 @@ export async function createBookingInFirestore(bookingData: {
     endTime: range.end,
   } as any;
 
+  const lockRef = bookingSlotLockRef(
+    bookingData.itemId,
+    bookingData.date,
+    bookingData.timeSlot
+  );
+
   try {
-    await setDoc(doc(db, 'bookings', newDocRef.id), newBooking);
+    await runTransaction(db, async (transaction) => {
+      const lockSnap = await transaction.get(lockRef);
+      if (lockSnap.exists()) {
+        throw new Error('عذراً، هذا الموعد محجوز لهذا اليوم. يرجى اختيار تاريخ أو فترة زمنية أخرى.');
+      }
+
+      transaction.set(newDocRef, newBooking);
+      transaction.set(lockRef, {
+        bookingDocId: newDocRef.id,
+        itemId: bookingData.itemId,
+        itemType: bookingData.itemType,
+        date: bookingData.date,
+        timeSlot: bookingData.timeSlot,
+        createdAt: new Date().toISOString(),
+      });
+    });
   } catch (err) {
+    if (err instanceof Error && err.message.startsWith('عذراً، هذا الموعد محجوز')) {
+      throw err;
+    }
     handleFirestoreError(err, OperationType.CREATE, `bookings/${newDocRef.id}`);
   }
 
@@ -395,9 +462,28 @@ export async function updateBookingStatusInFirestore(bookingDocId: string, newSt
 
   const bookingRef = doc(db, 'bookings', bookingDocId);
   try {
-    await updateDoc(bookingRef, {
-      status: newStatus,
-      updatedAt: new Date().toISOString(),
+    await runTransaction(db, async (transaction) => {
+      const bookingSnap = await transaction.get(bookingRef);
+      if (!bookingSnap.exists()) {
+        throw new Error('الحجز غير موجود.');
+      }
+
+      const booking = bookingSnap.data() as Booking;
+      transaction.update(bookingRef, {
+        status: newStatus,
+        updatedAt: new Date().toISOString(),
+      });
+
+      if (
+        newStatus === 'مرفوض' ||
+        newStatus === 'rejected' ||
+        newStatus === 'ملغي' ||
+        newStatus === 'cancelled'
+      ) {
+        transaction.delete(
+          bookingSlotLockRef(booking.itemId, booking.date, booking.timeSlot)
+        );
+      }
     });
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `bookings/${bookingDocId}`);
@@ -405,15 +491,7 @@ export async function updateBookingStatusInFirestore(bookingDocId: string, newSt
 }
 
 export async function cancelBookingInFirestore(bookingDocId: string): Promise<void> {
-  const bookingRef = doc(db, 'bookings', bookingDocId);
-  try {
-    await updateDoc(bookingRef, {
-      status: 'ملغي',
-      updatedAt: new Date().toISOString(),
-    });
-  } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, `bookings/${bookingDocId}`);
-  }
+  await updateBookingStatusInFirestore(bookingDocId, 'ملغي');
 }
 
 // Favorites Real-Time Listener & Actions
@@ -605,6 +683,44 @@ export function subscribeServiceProviders(callback: (providers: ServiceProvider[
     console.error('Error subscribing to service providers:', err);
     callback(INITIAL_SERVICE_PROVIDERS);
   });
+}
+
+export async function updateServiceProviderInFirestore(
+  updatedProvider: ServiceProvider
+): Promise<void> {
+  const firebaseUser = await ensureFirebaseAuth();
+  if (!firebaseUser) {
+    throw new Error('يجب تسجيل الدخول لحفظ بيانات مزود الخدمة.');
+  }
+
+  const userProfileSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
+  const ownsProviderFromProfile =
+    userProfileSnap.data()?.ownedProviderId === updatedProvider.id;
+  if (
+    updatedProvider.ownerId &&
+    updatedProvider.ownerId !== firebaseUser.uid &&
+    !ownsProviderFromProfile
+  ) {
+    throw new Error('لا تملك صلاحية تعديل هذه الخدمة.');
+  }
+
+  try {
+    await setDoc(
+      doc(db, 'serviceProviders', updatedProvider.id),
+      {
+        ...updatedProvider,
+        ownerId: firebaseUser.uid,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    handleFirestoreError(
+      err,
+      OperationType.UPDATE,
+      `serviceProviders/${updatedProvider.id}`
+    );
+  }
 }
 
 export function subscribePosts(callback: (posts: FeedPost[]) => void) {

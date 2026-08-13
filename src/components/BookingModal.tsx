@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { X, Calendar, Clock, Users, Phone, User, FileText, CheckCircle, AlertTriangle, Sparkles, ShieldCheck, AlertCircle, KeyRound, ArrowRight, ShieldAlert, Check } from 'lucide-react';
+import { X, Calendar, Clock, Users, Phone, User, FileText, CheckCircle, AlertTriangle, ShieldCheck, AlertCircle, KeyRound, ArrowRight, ShieldAlert, Check } from 'lucide-react';
 import { Hall, ServiceProvider, UserProfile, Booking } from '../types';
 import { findUserByPhoneFromFirestore, saveUserToFirestore } from '../data/usersDatabase';
 import { ensureFirebaseAuth } from '../lib/firebase';
+import { WednakLogo } from './WednakLogo';
 
 interface BookingModalProps {
   item: { type: 'hall'; data: Hall } | { type: 'provider'; data: ServiceProvider } | null;
@@ -73,15 +74,28 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const targetOwnerId = item.data.ownerId;
   const isSelfBooking = !currentUser.isGuest && currentUser.id === targetOwnerId;
 
-  // Check which time slots are accepted for this item on the chosen date
+  const isActiveBooking = (booking: Booking) =>
+    booking.status === 'قيد المراجعة' ||
+    booking.status === 'pending' ||
+    booking.status === 'مقبول' ||
+    booking.status === 'accepted';
+
+  const bookedSlotsForDate = Array.from(
+    new Set(
+      bookings
+        .filter(
+          (booking) =>
+            booking.itemId === itemId &&
+            booking.date === bookingDate &&
+            isActiveBooking(booking)
+        )
+        .map((booking) => booking.timeSlot)
+    )
+  );
+
+  // Pending and accepted reservations both hold the slot until rejection/cancellation.
   const isSlotBooked = (slot: string) => {
-    return bookings.some(
-      (b) =>
-        b.itemId === itemId &&
-        b.date === bookingDate &&
-        b.timeSlot === slot &&
-        (b.status === 'مقبول' || b.status === 'accepted')
-    );
+    return bookedSlotsForDate.includes(slot);
   };
 
   const isSelectedSlotBooked = isSlotBooked(timeSlot);
@@ -228,7 +242,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         {/* Header */}
         <div className="p-4 bg-gradient-to-r from-emerald-800 to-emerald-900 text-white flex items-center justify-between rounded-t-3xl">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-amber-300" />
+            <WednakLogo className="w-8 h-8 ring-1 ring-white/20" />
             <div>
               <h2 className="text-base font-bold">
                 {currentUser.isGuest ? 'أكمل حجزك كضيف (تأكيد السريع)' : 'طلب حجز جديد'}
@@ -293,6 +307,43 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               />
             </div>
 
+            {/* Booked appointments are shown before choosing a period. */}
+            <div className="rounded-2xl border border-gray-200 bg-gray-50/80 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-xs font-black text-rose-800 flex items-center gap-1.5">
+                  <Calendar className="w-4 h-4 text-rose-600" />
+                  المواعيد والأوقات المحجوزة
+                </label>
+                <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-gray-600 border border-gray-200">
+                  {bookingDate}
+                </span>
+              </div>
+
+              {bookedSlotsForDate.length === 0 ? (
+                <div className="flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-bold text-emerald-800">
+                  <CheckCircle className="w-4 h-4 shrink-0" />
+                  لا توجد حجوزات في هذا التاريخ، جميع الفترات متاحة.
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {bookedSlotsForDate.map((slot) => (
+                    <div
+                      key={slot}
+                      className="flex items-center justify-between gap-2 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-[11px] font-bold text-rose-900"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 shrink-0 text-rose-600" />
+                        {slot}
+                      </span>
+                      <span className="shrink-0 rounded-full bg-rose-200 px-2 py-0.5 text-[9px] font-black">
+                        محجوز
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Time Slot Picker */}
             <div>
               <label className="text-xs font-bold text-gray-800 block mb-1 flex items-center gap-1">
@@ -311,7 +362,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     <button
                       key={slot}
                       type="button"
-                      onClick={() => setTimeSlot(slot)}
+                      onClick={() => !booked && setTimeSlot(slot)}
+                      disabled={booked}
                       className={`px-2.5 py-2 rounded-xl text-[11px] font-bold border transition-all flex flex-col items-center justify-center gap-0.5 ${
                         booked
                           ? 'bg-rose-50 text-rose-800 border-rose-300'
@@ -324,7 +376,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                       <span>{slot.split(' ')[0]}</span>
                       {booked ? (
                         <span className="text-[9px] bg-rose-200 text-rose-900 px-1.5 py-0.2 rounded font-black">
-                          محجوز مؤكد
+                          محجوز
                         </span>
                       ) : (
                         <span className="text-[9px] opacity-80">{slot.split(' ')[1]}</span>

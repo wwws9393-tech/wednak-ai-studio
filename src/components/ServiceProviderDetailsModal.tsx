@@ -23,12 +23,12 @@ export const ServiceProviderDetailsModal: React.FC<ServiceProviderDetailsModalPr
   currentUser,
   bookings = [],
 }) => {
-  if (!isOpen || !provider) return null;
-
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => {
     const today = new Date();
     return today.toISOString().split('T')[0];
   });
+
+  if (!isOpen || !provider) return null;
 
   const isSelfProvider = currentUser && (currentUser.id === provider.ownerId || currentUser.ownedProviderId === provider.id);
 
@@ -38,11 +38,14 @@ export const ServiceProviderDetailsModal: React.FC<ServiceProviderDetailsModalPr
     'ليلي سهرة (11:00 م - 2:00 ص)',
   ];
 
-  const acceptedBookingsForDate = bookings.filter(
+  const blockingBookingsForDate = bookings.filter(
     (b) =>
       b.itemId === provider.id &&
       b.date === selectedCalendarDate &&
-      b.status === 'مقبول'
+      (b.status === 'قيد المراجعة' ||
+        b.status === 'pending' ||
+        b.status === 'مقبول' ||
+        b.status === 'accepted')
   );
 
   return (
@@ -182,7 +185,7 @@ export const ServiceProviderDetailsModal: React.FC<ServiceProviderDetailsModalPr
             {/* Slots Availability Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {STANDARD_SLOTS.map((slot) => {
-                const isBooked = acceptedBookingsForDate.some((b) => b.timeSlot === slot);
+                const isBooked = blockingBookingsForDate.some((b) => b.timeSlot === slot);
                 return (
                   <div
                     key={slot}

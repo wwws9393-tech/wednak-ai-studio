@@ -29,6 +29,12 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Deterministic slot locks prevent two simultaneous requests from
+    // reserving the same hall/service, date and period during testing.
+    match /bookingSlots/{slotId} {
+      allow read, write: if true;
+    }
+
     // Halls Collection
     match /halls/{hallId} {
       allow read: if true;
