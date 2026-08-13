@@ -75,6 +75,10 @@ service cloud.firestore {
       match /favorites/{favoriteId} {
         allow read, create, update, delete: if isSelf(userId) || isAdmin();
       }
+
+      match /notificationState/{stateId} {
+        allow read, create, update, delete: if isSelf(userId);
+      }
     }
 
     match /deletedUsers/{userId} {
