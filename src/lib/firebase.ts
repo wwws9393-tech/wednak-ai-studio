@@ -15,6 +15,7 @@ import {
   runTransaction,
   deleteDoc,
   writeBatch,
+  arrayUnion,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import {
@@ -405,6 +406,71 @@ export async function updateBookingStatusInFirestore(bookingId: string, status: 
   await requireFirebaseUser();
   try { await updateDoc(doc(db, 'bookings', bookingId), { status, updatedAt: new Date().toISOString() }); }
   catch (err) { handleFirestoreError(err, OperationType.UPDATE, `bookings/${bookingId}`); }
+}
+
+export function subscribeNotificationReadIds(
+  uid: string,
+  callback: (ids: string[]) => void,
+  onError?: (message: string) => void
+) {
+  if (!uid) { callback([]); return () => {}; }
+  const stateRef = doc(db, 'users', uid, 'notificationState', 'readState');
+  return onSnapshot(stateRef,
+    (snap) => {
+      const ids = snap.exists() && Array.isArray(snap.data().readIds) ? snap.data().readIds : [];
+      callback(Array.from(new Set(ids.filter((id: unknown): id is string => typeof id === 'string'))));
+    },
+    (err) => {
+      console.error('Notification read-state listener failed:', err);
+      onError?.(err instanceof Error ? err.message : String(err));
+    });
+}
+
+export async function markNotificationReadInFirestore(uid: string, notificationId: string): Promise<void> {
+  const user = await requireFirebaseUser();
+  if (uid !== user.uid) throw new Error('لا يمكنك تعديل إشعارات حساب آخر.');
+  if (!notificationId) return;
+  const stateRef = doc(db, 'users', uid, 'notificationState', 'readState');
+  try {
+    await setDoc(stateRef, {
+      readIds: arrayUnion(notificationId),
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `users/${uid}/notificationState/readState`);
+  }
+}
+
+export async function markAllNotificationsReadInFirestore(uid: string, notificationIds: string[]): Promise<void> {
+  const user = await requireFirebaseUser();
+  if (uid !== user.uid) throw new Error('لا يمكنك تعديل إشعارات حساب آخر.');
+  const cleanIds = Array.from(new Set(notificationIds.filter(Boolean))).slice(-500);
+  const stateRef = doc(db, 'users', uid, 'notificationState', 'readState');
+  try {
+    await setDoc(stateRef, {
+      readIds: cleanIds,
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `users/${uid}/notificationState/readState`);
+  }
+}
+
+export async function mergeLegacyNotificationReadIds(uid: string, notificationIds: string[]): Promise<void> {
+  const user = await requireFirebaseUser();
+  if (uid !== user.uid || notificationIds.length === 0) return;
+  const stateRef = doc(db, 'users', uid, 'notificationState', 'readState');
+  const cleanIds = Array.from(new Set(notificationIds.filter(Boolean))).slice(-500);
+  try {
+    for (let index = 0; index < cleanIds.length; index += 50) {
+      await setDoc(stateRef, {
+        readIds: arrayUnion(...cleanIds.slice(index, index + 50)),
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    }
+  } catch (err) {
+    console.warn('Legacy notification read-state migration skipped:', err);
+  }
 }
 
 export function subscribeUserFavorites(uid: string, callback: (ids: string[]) => void) {
