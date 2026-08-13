@@ -3,6 +3,7 @@ import { User, ShieldAlert, Phone, Mail, MapPin, Building2, FileText, Lock, Help
 import { Hall, ServiceProvider, UserProfile } from '../types';
 import { CroppedImageInput } from './CroppedImageInput';
 import { uploadOwnerMedia } from '../lib/storage';
+import { PushNotificationSettings } from './PushNotificationSettings';
 
 interface ProfileViewProps {
   currentUser: UserProfile;
@@ -89,6 +90,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ currentUser, halls = [
         </div>
 
         <div className="md:col-span-5 space-y-4">
+          <div className="bg-white p-5 rounded-3xl border space-y-3">
+            <h2 className="text-sm font-bold border-b pb-2">إشعارات الهاتف</h2>
+            <PushNotificationSettings userId={currentUser.id} />
+          </div>
           <div className="bg-white p-5 rounded-3xl border space-y-3">
             <h2 className="text-sm font-bold border-b pb-2">اختصارات</h2>
             {onOpenAuthModal && <button onClick={onOpenAuthModal} className="w-full p-3 rounded-2xl bg-amber-500 text-black font-extrabold text-xs flex justify-between"><span>تسجيل خروج / دخول بحساب آخر</span><span>←</span></button>}
