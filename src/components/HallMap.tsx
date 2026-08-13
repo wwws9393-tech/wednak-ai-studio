@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { MapContainer, Marker, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import {
@@ -154,7 +155,7 @@ export const HallMap: React.FC<HallMapProps> = ({
 
   return (
     <>
-      <section className={`overflow-hidden rounded-3xl border border-emerald-100 bg-white shadow-sm ${compact ? '' : 'mt-1'}`}>
+      <section className={`relative isolate z-0 overflow-hidden rounded-3xl border border-emerald-100 bg-white shadow-sm ${compact ? '' : 'mt-1'}`}>
         {coordinates ? (
           <button type="button" onClick={() => setIsOpen(true)} className="group relative block h-40 w-full overflow-hidden text-right" aria-label={`عرض موقع ${hallName} على الخريطة`}>
             <MapContainer key={`${coordinates.latitude}-${coordinates.longitude}`} center={[coordinates.latitude, coordinates.longitude]} zoom={15} dragging={false} doubleClickZoom={false} scrollWheelZoom={false} zoomControl={false} attributionControl={false} className="h-full w-full pointer-events-none">
@@ -188,8 +189,8 @@ export const HallMap: React.FC<HallMapProps> = ({
         </div>
       </section>
 
-      {isOpen && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/65 p-3 backdrop-blur-sm" dir="rtl">
+      {isOpen && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/65 p-3 backdrop-blur-sm" dir="rtl">
           <div className="flex h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
             <header className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
               <div>
@@ -228,11 +229,19 @@ export const HallMap: React.FC<HallMapProps> = ({
                   {coordinates && <button type="button" disabled={isSaving} onClick={deleteLocation} className="flex items-center justify-center gap-1.5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-black text-rose-700"><Trash2 className="h-4 w-4" /> حذف</button>}
                 </>
               ) : (
-                <button type="button" onClick={openGoogleMaps} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-700 px-4 py-3 text-sm font-black text-white hover:bg-emerald-800"><ExternalLink className="h-4 w-4" /> فتح اتجاهات الطريق في Google Maps</button>
+                <>
+                  <button type="button" onClick={openGoogleMaps} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-700 px-4 py-3 text-sm font-black text-white hover:bg-emerald-800"><ExternalLink className="h-4 w-4" /> فتح اتجاهات الطريق في Google Maps</button>
+                  {editable && onDelete && (
+                    <button type="button" disabled={isSaving} onClick={deleteLocation} className="flex items-center justify-center gap-1.5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-black text-rose-700 hover:bg-rose-100 disabled:opacity-50">
+                      <Trash2 className="h-4 w-4" /> حذف الموقع
+                    </button>
+                  )}
+                </>
               )}
             </footer>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
