@@ -86,3 +86,63 @@
   .wedding-wordmark,
   #brand-logo-btn:hover .wedding-wordmark { transform: none; transition: none; }
 }
+
+/* Cinematic authentication experience. The logo and wordmark reuse the exact app brand. */
+.wednak-auth-overlay {
+  background:
+    radial-gradient(circle at 12% 10%, rgb(212 172 72 / .18), transparent 31%),
+    radial-gradient(circle at 88% 88%, rgb(14 116 88 / .25), transparent 35%),
+    rgb(2 24 20 / .84);
+  backdrop-filter: blur(18px) saturate(115%);
+}
+
+.wednak-auth-shell { animation: wednak-auth-arrive .58s cubic-bezier(.2,.78,.2,1) both; }
+.wednak-auth-cinema {
+  isolation: isolate;
+  background:
+    linear-gradient(145deg, rgb(2 44 35 / .96), rgb(5 83 64 / .95) 58%, rgb(39 67 49 / .96)),
+    #063f33;
+}
+.wednak-auth-cinema::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  opacity: .16;
+  background-image:
+    linear-gradient(rgb(255 255 255 / .11) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / .08) 1px, transparent 1px);
+  background-size: 46px 46px;
+  mask-image: linear-gradient(to bottom, transparent, black 28%, black 70%, transparent);
+}
+.wednak-auth-cinema::after {
+  content: "";
+  position: absolute;
+  inset: auto -12% -26% -12%;
+  height: 55%;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgb(220 177 75 / .27), transparent 67%);
+  filter: blur(8px);
+}
+.wednak-auth-glow { position: absolute; border-radius: 999px; filter: blur(2px); opacity: .5; animation: wednak-auth-drift 8s ease-in-out infinite; }
+.wednak-auth-glow-one { width: 210px; height: 210px; top: 7%; right: -90px; background: radial-gradient(circle at 35% 35%, rgb(255 235 171 / .44), rgb(213 169 65 / .04) 70%); }
+.wednak-auth-glow-two { width: 270px; height: 270px; left: -120px; bottom: 10%; background: radial-gradient(circle at 55% 45%, rgb(89 214 170 / .33), transparent 70%); animation-delay: -3.5s; }
+.wednak-auth-brand-card { box-shadow: 0 28px 70px rgb(0 25 18 / .35), inset 0 1px 0 rgb(255 255 255 / .8); }
+.wednak-auth-wordmark { font-size: 3rem; }
+.wednak-auth-wordmark-mobile { font-size: 2.3rem; }
+.wednak-auth-choice { box-shadow: 0 7px 22px rgb(2 44 35 / .035); transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease, background-color .22s ease; }
+.wednak-auth-choice:hover { transform: translateY(-2px); border-color: rgb(5 150 105 / .4); box-shadow: 0 14px 28px rgb(2 44 35 / .09); }
+.wednak-auth-primary { transition: transform .2s ease, background-color .2s ease, box-shadow .2s ease; }
+.wednak-auth-primary:hover:not(:disabled) { transform: translateY(-1px); background: #06634d; box-shadow: 0 13px 28px rgb(2 70 52 / .2); }
+.wednak-auth-primary:active:not(:disabled) { transform: translateY(0) scale(.99); }
+.wednak-auth-input { border-color: rgb(15 65 53 / .14); background: rgb(255 255 255 / .88); color: #17231f; outline: none; transition: border-color .2s ease, box-shadow .2s ease, background-color .2s ease; }
+.wednak-auth-input:focus { border-color: rgb(5 120 88 / .72); background: white; box-shadow: 0 0 0 4px rgb(16 185 129 / .1); }
+
+@keyframes wednak-auth-arrive { from { opacity: 0; transform: translateY(16px) scale(.975); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes wednak-auth-drift { 0%,100% { transform: translate3d(0,0,0) scale(1); } 50% { transform: translate3d(12px,-12px,0) scale(1.06); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .wednak-auth-shell, .wednak-auth-glow { animation: none; }
+  .wednak-auth-choice, .wednak-auth-primary { transition: none; }
+}
