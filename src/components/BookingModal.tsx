@@ -220,12 +220,16 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
 
   const changeBookingDate = (value: string) => {
     const today = getIraqTodayDate();
-    if (!value || value < today) {
+    if (!value) {
+      setErrorMsg('اختر تاريخ الحجز.');
+      return;
+    }
+    setBookingDate(value);
+    if (value < today) {
       setErrorMsg('الأيام السابقة مقفلة. اختر اليوم أو تاريخاً لاحقاً.');
       return;
     }
     setErrorMsg('');
-    setBookingDate(value);
   };
 
   useEffect(() => {
@@ -356,8 +360,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
           <div>
             <label htmlFor="booking-date" className="text-xs font-bold flex gap-1 mb-1 cursor-pointer" onClick={openDatePicker}><Calendar className="w-4 h-4"/>التاريخ</label>
             <div className="wednak-booking-date-control relative min-w-0 max-w-full cursor-pointer overflow-hidden rounded-xl">
-              <div className="pointer-events-none flex h-12 w-full items-center justify-between rounded-xl border border-slate-700 bg-white px-3 text-slate-900">
-                <Calendar className="h-5 w-5 shrink-0 text-emerald-800" />
+              <div className={`pointer-events-none flex h-12 w-full items-center justify-between rounded-xl border px-3 transition-colors ${selectedDatePast ? 'border-rose-400 bg-rose-50 text-rose-800' : 'border-slate-700 bg-white text-slate-900'}`}>
+                <Calendar className={`h-5 w-5 shrink-0 ${selectedDatePast ? 'text-rose-600' : 'text-emerald-800'}`} />
                 <span className="font-bold tabular-nums" dir="ltr">{bookingDate}</span>
               </div>
               <input
@@ -372,7 +376,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
                 className="wednak-booking-date-native absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
               />
             </div>
-            <p className="mt-1.5 flex items-center gap-1 text-[9px] font-bold text-slate-500"><ShieldCheck className="h-3.5 w-3.5 text-emerald-700" />الأيام السابقة والأوقات المنتهية مقفلة تلقائياً حسب توقيت بغداد.</p>
+            <p className={`mt-1.5 flex items-center gap-1 text-[9px] font-bold ${selectedDatePast ? 'text-rose-700' : 'text-slate-500'}`}><ShieldCheck className={`h-3.5 w-3.5 ${selectedDatePast ? 'text-rose-600' : 'text-emerald-700'}`} />{selectedDatePast ? 'هذا تاريخ سابق؛ الحجز مقفل ولا يمكن إرسال الطلب.' : 'الأيام السابقة والأوقات المنتهية مقفلة تلقائياً حسب توقيت بغداد.'}</p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 space-y-2">
             <div className="flex items-center justify-between gap-2">
@@ -384,7 +388,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
                 {bookingDate}
               </span>
             </div>
-            {availabilityLoading ? (
+            {selectedDatePast ? (
+              <div className="flex items-center gap-1.5 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-[11px] font-black text-rose-800">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                هذا اليوم مضى ولا يمكن إنشاء حجز فيه.
+              </div>
+            ) : availabilityLoading ? (
               <p className="rounded-xl bg-white px-3 py-2 text-[11px] font-bold text-gray-500">جاري تحميل المواعيد...</p>
             ) : acceptedRanges.length === 0 && visiblePendingRanges.length === 0 ? (
               <div className="flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-bold text-emerald-800">
@@ -431,13 +440,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
   <div className="grid grid-cols-2 gap-3">
     <div>
       <label className="text-[11px] font-bold text-gray-600 block mb-1">من الساعة</label>
-      <select value={startTime} onChange={(e) => { const next = e.target.value; setStartTime(next); const h = Number(next.slice(0,2)) + (selectedPeriod === 'night' && Number(next.slice(0,2)) < 6 ? 24 : 0); if (endOptions.length === 0 || minutesForRange(next, endTime, selectedPeriod).length === 0) setEndTime(hourToTime(h + 1)); }} className="w-full px-3 py-2.5 border rounded-xl text-xs bg-white">
+      <select disabled={selectedDatePast || startOptions.length === 0} value={startTime} onChange={(e) => { const next = e.target.value; setStartTime(next); const h = Number(next.slice(0,2)) + (selectedPeriod === 'night' && Number(next.slice(0,2)) < 6 ? 24 : 0); if (endOptions.length === 0 || minutesForRange(next, endTime, selectedPeriod).length === 0) setEndTime(hourToTime(h + 1)); }} className="w-full px-3 py-2.5 border rounded-xl text-xs bg-white disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed">
         {startOptions.map((h) => <option key={h} value={hourToTime(h)}>{hourLabel(h)}</option>)}
       </select>
     </div>
     <div>
       <label className="text-[11px] font-bold text-gray-600 block mb-1">إلى الساعة</label>
-      <select value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full px-3 py-2.5 border rounded-xl text-xs bg-white">
+      <select disabled={selectedDatePast || endOptions.length === 0} value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full px-3 py-2.5 border rounded-xl text-xs bg-white disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed">
         {endOptions.map((h) => <option key={h} value={hourToTime(h)}>{hourLabel(h)}</option>)}
       </select>
     </div>
@@ -450,7 +459,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
           <div className="grid sm:grid-cols-2 gap-3"><div><label className="text-xs font-bold"><User className="inline w-4 h-4"/> الاسم</label><input value={customerName} onChange={(e)=>setCustomerName(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs" required/></div><div><label className="text-xs font-bold"><Phone className="inline w-4 h-4"/> الهاتف</label><input type="tel" inputMode="numeric" maxLength={11} value={customerPhone} onChange={(e)=>setCustomerPhone(toEnglishDigits(e.target.value).replace(/\D/g, '').slice(0, 11))} placeholder="07701234567" className="w-full px-3 py-2 border rounded-xl text-xs dir-ltr" required/></div></div>
           <div><label className="text-xs font-bold"><FileText className="inline w-4 h-4"/> ملاحظات</label><textarea value={notes} onChange={(e)=>setNotes(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs h-16"/></div>
           <div className="p-2.5 bg-gray-50 border rounded-xl text-[11px] text-gray-600 flex gap-2"><ShieldCheck className="w-4 h-4 text-emerald-600"/>{currentUser.isGuest?'سنرسل OTP حقيقي ونربط الحجز بهويتك.':'الحجز خاص بك وبالطرف المستلم فقط.'}</div>
-          <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className="px-4 py-2 text-xs">إلغاء</button><button disabled={isLoading||isSelfBooking||selectedBooked||selectedPast||availabilityLoading} className="px-5 py-2 bg-emerald-700 disabled:bg-gray-400 text-white rounded-xl text-xs font-bold flex gap-1"><WalletCards className="w-4 h-4"/>{isLoading?'جاري التنفيذ...':currentUser.isGuest?'إرسال OTP':'دفع العربون'}</button></div>
+          <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className="px-4 py-2 text-xs">إلغاء</button><button disabled={isLoading||isSelfBooking||selectedBooked||selectedPast||availabilityLoading} className="px-5 py-2 bg-emerald-700 text-white rounded-xl text-xs font-bold flex gap-1 transition-opacity disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-35"><WalletCards className="w-4 h-4"/>{isLoading?'جاري التنفيذ...':currentUser.isGuest?'إرسال OTP':'دفع العربون'}</button></div>
         </form> : guestStep==='otp_form' ? <form onSubmit={verifyGuestOtp} className="p-5 space-y-4"><div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs"><KeyRound className="inline w-4 h-4"/> أدخل الرمز الحقيقي المرسل إلى {customerPhone}</div><input value={otpCode} onChange={(e)=>setOtpCode(e.target.value)} inputMode="numeric" maxLength={6} className="w-full px-3 py-2 border rounded-xl text-center text-xl tracking-widest" placeholder="000000"/><div className="flex justify-between"><button type="button" onClick={()=>setGuestStep('details')} className="text-xs flex gap-1"><ArrowRight className="w-4 h-4"/>تغيير الرقم</button><button disabled={isLoading} className="px-5 py-2 bg-emerald-800 text-white rounded-xl text-xs font-bold">{isLoading?'جاري التحقق...':'الانتقال للدفع'}</button></div></form> : <div className="p-5 space-y-4"><div className="text-center"><WalletCards className="w-10 h-10 mx-auto text-emerald-700"/><h3 className="font-black mt-2">دفع العربون</h3><p className="text-2xl font-black text-amber-700">{depositAmount.toLocaleString()} د.ع</p></div><div className="grid grid-cols-2 gap-3">{(['زين كاش','Qi Card'] as const).map(method=><button key={method} onClick={()=>setPaymentMethod(method)} className={`p-4 border-2 rounded-2xl font-bold text-sm ${paymentMethod===method?'border-emerald-700 bg-emerald-50':'border-gray-200'}`}><CreditCard className="w-5 h-5 mx-auto mb-2"/>{method}</button>)}</div><div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900">سيُسجل الطلب بانتظار الدفع إلى أن يتم ربط حساب التاجر الرسمي ببوابة {paymentMethod}. لن نعتبر العربون مدفوعاً دون تأكيد حقيقي من بوابة الدفع.</div><button disabled={isLoading||!bookingUser} onClick={async()=>{if(!bookingUser)return;setIsLoading(true);try{await submitBooking(bookingUser);onClose()}catch(err){setErrorMsg(err instanceof Error?err.message:'تعذر إرسال الحجز')}finally{setIsLoading(false)}}} className="w-full py-3 bg-emerald-700 text-white rounded-xl font-bold text-xs">{isLoading?'جاري إرسال الطلب...':`اختيار ${paymentMethod} وإرسال الطلب`}</button></div>}
       </div>
     </div>
