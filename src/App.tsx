@@ -245,7 +245,7 @@ export function App() {
     const previousIds = notificationReadIds;
     setNotificationReadIds(Array.from(new Set([...previousIds, ...ids])));
     try {
-      await markAllNotificationsReadInFirestore(currentUser.id, ids);
+      await markAllNotificationsReadInFirestore(currentUser.id, Array.from(new Set([...previousIds, ...ids])));
     } catch (error) {
       setNotificationReadIds(previousIds);
       console.error('Could not mark all notifications as read:', error);
