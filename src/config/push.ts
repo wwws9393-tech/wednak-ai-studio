@@ -1,2 +1,2 @@
-// Public Web Push key generated in Firebase Console > Project settings > Cloud Messaging.
-export const WEB_PUSH_VAPID_KEY = 'REPLACE_WITH_FIREBASE_WEB_PUSH_PUBLIC_KEY';
+// Firebase Web Push public VAPID key. This key is intentionally public.
+export const WEB_PUSH_VAPID_KEY = 'BBVddJWrtYHuMjXm1fmPsi7oIFA4lz_olfjDohEZjmMnYrfiQL0LZsM8lMIxl3ItoFoUFJU0Ig7PJtl1Z-t0Ey4';
