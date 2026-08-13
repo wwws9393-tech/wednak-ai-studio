@@ -8,13 +8,13 @@ export const WednakLogo: React.FC<WednakLogoProps> = ({
   className = 'w-9 h-9',
 }) => (
   <span
-    className={`inline-flex shrink-0 overflow-hidden rounded-xl bg-[#0B7D3B] ${className}`}
+    className={`wednak-modal-logo inline-flex shrink-0 items-center justify-center ${className}`}
     aria-label="شعار ويدنك"
   >
     <img
       src="/wednak-mark-green.svg"
       alt="شعار ويدنك"
-      className="h-full w-full object-cover"
+      className="h-full w-full object-contain"
     />
   </span>
 );

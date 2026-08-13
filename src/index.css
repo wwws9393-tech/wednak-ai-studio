@@ -31,6 +31,28 @@
 }
 @media (prefers-reduced-motion: reduce) { .wednak-logo-3d { animation: none; transform: rotateX(-5deg) rotateY(-8deg); } }
 
+/* White, transparent mark used only inside dark-green modal headers. */
+.wednak-modal-logo {
+  background: transparent;
+  animation: wednak-modal-logo-float 3.4s ease-in-out infinite;
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / .16));
+  transform-origin: center;
+  will-change: transform;
+}
+
+.wednak-modal-logo img {
+  filter: brightness(0) invert(1);
+}
+
+@keyframes wednak-modal-logo-float {
+  0%, 100% { transform: translateY(0) rotate(-1deg) scale(1); }
+  50% { transform: translateY(-2px) rotate(1deg) scale(1.035); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wednak-modal-logo { animation: none; transform: none; }
+}
+
 .wedding-wordmark {
   display: inline-block;
   color: #064e3b;
