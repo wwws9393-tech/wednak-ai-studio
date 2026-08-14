@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { ArrowLeft, CalendarDays, Percent, Sparkles, Tag, X } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Sparkles, Tag, X } from 'lucide-react';
 import { BusinessOffer } from '../types';
 
 interface OfferCardProps {
@@ -14,7 +14,7 @@ export const OfferCard: React.FC<OfferCardProps> = ({ offer, ownerName, ownerIma
   return <button type="button" onClick={onOpen} className="group text-right overflow-hidden rounded-3xl border border-lime-200/90 bg-gradient-to-br from-[#fbfff4] via-white to-emerald-50 shadow-[0_14px_38px_rgba(6,95,70,0.09)] ring-1 ring-emerald-800/10 hover:-translate-y-1 hover:shadow-xl transition-all">
     <div className="relative p-5 bg-gradient-to-l from-emerald-950 via-emerald-900 to-emerald-800 text-white overflow-hidden">
       <span className="absolute -left-8 -top-10 h-28 w-28 rounded-full bg-lime-200/10"/>
-      <div className="relative flex justify-between gap-3"><span className="rounded-full bg-amber-300 px-3 py-1 text-[10px] font-black text-emerald-950 flex items-center gap-1"><Sparkles className="w-3 h-3"/>عرض خاص</span>{discount > 0 && <span className="text-amber-200 font-black text-sm">خصم {discount}%</span>}</div>
+      <div className="relative flex justify-between gap-3"><span className="rounded-full bg-amber-300 px-3 py-1 text-[10px] font-black text-emerald-950 flex items-center gap-1"><Sparkles className="w-3 h-3"/>عرض خاص</span>{discount > 0 && <span className="whitespace-nowrap text-sm font-black text-amber-200" dir="rtl">خصم {discount}٪</span>}</div>
       <h3 className="relative mt-4 text-lg font-black text-amber-100 line-clamp-1">{offer.title}</h3>
     </div>
     <div className="p-5 space-y-4">
@@ -30,7 +30,7 @@ export const OfferDetailsModal: React.FC<Omit<OfferCardProps, 'onOpen'> & { onCl
   useEffect(() => { const previous = document.body.style.overflow; document.body.style.overflow = 'hidden'; const close = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); }; window.addEventListener('keydown', close); return () => { document.body.style.overflow = previous; window.removeEventListener('keydown', close); }; }, [onClose]);
   return <div className="fixed inset-0 z-[130] bg-slate-950/75 backdrop-blur-sm grid place-items-center p-3" onClick={onClose}>
     <div className="w-full max-w-lg overflow-hidden rounded-3xl bg-white border border-lime-200 shadow-2xl" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
-      <header className="relative bg-gradient-to-l from-emerald-950 via-emerald-900 to-emerald-800 p-5 text-white"><button type="button" onClick={onClose} className="absolute left-4 top-4 w-10 h-10 rounded-full bg-white/10 grid place-items-center"><X className="w-5 h-5"/></button><span className="inline-flex rounded-full bg-amber-300 px-3 py-1 text-[10px] font-black text-emerald-950"><Percent className="w-3 h-3 ml-1"/>عرض ويدنك {discount}%</span><h2 className="mt-4 text-xl font-black text-amber-100 pl-12">{offer.title}</h2></header>
+      <header className="relative bg-gradient-to-l from-emerald-950 via-emerald-900 to-emerald-800 p-5 text-white"><button type="button" onClick={onClose} className="absolute left-4 top-4 w-10 h-10 rounded-full bg-white/10 grid place-items-center"><X className="w-5 h-5"/></button><span className="inline-flex whitespace-nowrap rounded-full bg-amber-300 px-3 py-1 text-[10px] font-black text-emerald-950" dir="rtl">عرض ويدنك — خصم {discount}٪</span><h2 className="mt-4 text-xl font-black text-amber-100 pl-12">{offer.title}</h2></header>
       <div className="p-5 space-y-5">
         <button type="button" onClick={onOpenOwner} className="w-full rounded-2xl border border-lime-200 bg-lime-50/50 p-3 flex items-center gap-3 text-right"><img src={ownerImage} alt={ownerName} className="w-12 h-12 rounded-full object-cover border-2 border-emerald-700"/><span className="min-w-0 flex-1"><b className="block truncate">{ownerName}</b><small className="text-emerald-700">{offer.ownerType} · اضغط لزيارة الصفحة</small></span><ArrowLeft className="w-5 h-5 text-emerald-700"/></button>
         <p className="text-sm leading-7 text-gray-700">{offer.description || 'لا توجد تفاصيل إضافية لهذا العرض.'}</p>

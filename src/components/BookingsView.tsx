@@ -62,6 +62,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
   const [actionMessage, setActionMessage] = useState('');
   const [actionError, setActionError] = useState('');
   const [conflictBooking, setConflictBooking] = useState<Booking | null>(null);
+  const [conflictActionError, setConflictActionError] = useState('');
   const [requesterProfiles, setRequesterProfiles] = useState<Record<string, UserProfile | null>>({});
   const [profilesLoading, setProfilesLoading] = useState(false);
   const isBusinessAccount = accountType === 'صاحب قاعة' || accountType === 'مزود خدمة';
@@ -85,6 +86,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
   const openConflictAccounts = async (booking: Booking) => {
     const groups = groupPendingAccounts(booking, bookings);
     setConflictBooking(booking);
+    setConflictActionError('');
     setRequesterProfiles({});
     if (!onLoadRequester) return;
     setProfilesLoading(true);
@@ -96,16 +98,28 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
     }
   };
 
-  const updateBooking = async (bookingId: string, status: Booking['status']) => {
-    if (!onUpdateBookingStatus || updatingBookingId) return;
+  const updateBooking = async (bookingId: string, status: Booking['status'], insideConflictDialog = false): Promise<boolean> => {
+    if (!onUpdateBookingStatus || updatingBookingId) return false;
     setUpdatingBookingId(bookingId); setActionMessage(''); setActionError('');
+    if (insideConflictDialog) setConflictActionError('');
     try {
       await onUpdateBookingStatus(bookingId, status);
       setActionMessage(status === 'مقبول' ? 'تم قبول الحجز وتثبيت الموعد.' : 'تم رفض الطلب بنجاح.');
+      return true;
     } catch (error) {
       const raw = error instanceof Error ? error.message : '';
-      setActionError(raw.includes('محجوز') ? 'يتعارض هذا الطلب مع حجز مؤكد في نفس التاريخ والفترة.' : raw || 'تعذر تحديث الحجز.');
+      const message = raw.includes('محجوز') ? 'يتعارض هذا الطلب مع حجز مؤكد في نفس التاريخ والفترة.' : raw || 'تعذر تحديث الحجز.';
+      if (insideConflictDialog) setConflictActionError(message);
+      else setActionError(message);
+      return false;
     } finally { setUpdatingBookingId(''); }
+  };
+
+  const confirmBookingUpdate = async (booking: Booking, status: Booking['status'], closeDialogAfterSuccess = false) => {
+    const verb = status === 'مقبول' ? 'قبول' : 'رفض';
+    if (!window.confirm(`هل أنت متأكد من ${verb} طلب ${booking.requesterName || booking.customerName || 'هذا المستخدم'}؟`)) return;
+    const updated = await updateBooking(booking.id, status, closeDialogAfterSuccess);
+    if (updated && closeDialogAfterSuccess) setConflictBooking(null);
   };
 
   const getStatusBadgeClass = (status: BookingStatus) => {
@@ -117,7 +131,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
       case 'مرفوض':
         return 'bg-rose-100 text-rose-900 border-rose-300';
       case 'ملغي':
-        return 'bg-gray-100 text-gray-700 border-gray-300';
+        return 'bg-slate-950 text-white border-slate-950';
       default:
         return 'bg-gray-100 text-gray-700';
     }
@@ -127,6 +141,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
       case 'مقبول': return { card: 'border-emerald-500 ring-emerald-100 hover:border-emerald-600 shadow-[0_12px_30px_rgba(5,150,105,0.10)] hover:shadow-[0_16px_38px_rgba(5,150,105,0.16)]', accent: 'via-emerald-500' };
       case 'قيد المراجعة': return { card: 'border-amber-400 ring-amber-100 hover:border-amber-500 shadow-[0_12px_30px_rgba(217,119,6,0.10)] hover:shadow-[0_16px_38px_rgba(217,119,6,0.16)]', accent: 'via-amber-400' };
       case 'مرفوض': return { card: 'border-rose-500 ring-rose-100 hover:border-rose-600 shadow-[0_12px_30px_rgba(244,63,94,0.10)] hover:shadow-[0_16px_38px_rgba(244,63,94,0.16)]', accent: 'via-rose-500' };
+      case 'ملغي': return { card: 'border-slate-950 ring-slate-300 hover:border-black shadow-[0_12px_30px_rgba(15,23,42,0.14)] hover:shadow-[0_16px_38px_rgba(15,23,42,0.22)]', accent: 'via-slate-950' };
       default: return { card: 'border-gray-300 ring-gray-100 hover:border-gray-400 shadow-sm hover:shadow-md', accent: 'via-gray-400' };
     }
   };
@@ -245,10 +260,10 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
               </button>}
 
               {isBusinessAccount && normalizeStatus(b.status) === 'قيد المراجعة' && onUpdateBookingStatus && <div className="grid grid-cols-2 gap-2" onClick={(event) => event.stopPropagation()}>
-                <button type="button" disabled={!!updatingBookingId} onClick={() => void updateBooking(b.id, 'مقبول')} className="py-2.5 bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold disabled:opacity-50">
+                <button type="button" disabled={!!updatingBookingId} onClick={() => void confirmBookingUpdate(b, 'مقبول')} className="py-2.5 bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold disabled:opacity-50">
                   <CheckCircle2 className="inline w-4 h-4 ml-1"/>{updatingBookingId === b.id ? 'جاري التنفيذ...' : 'قبول'}
                 </button>
-                <button type="button" disabled={!!updatingBookingId} onClick={() => void updateBooking(b.id, 'مرفوض')} className="py-2.5 bg-rose-100 text-rose-800 rounded-xl text-xs font-bold disabled:opacity-50">
+                <button type="button" disabled={!!updatingBookingId} onClick={() => void confirmBookingUpdate(b, 'مرفوض')} className="py-2.5 bg-rose-100 text-rose-800 rounded-xl text-xs font-bold disabled:opacity-50">
                   <XCircle className="inline w-4 h-4 ml-1"/>رفض
                 </button>
               </div>}
@@ -285,6 +300,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
             <button type="button" onClick={() => setConflictBooking(null)} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10" aria-label="إغلاق"><X className="h-5 w-5" /></button>
           </header>
           <div className="space-y-3 p-4">
+            {conflictActionError && <div role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs font-bold text-rose-800">{conflictActionError}</div>}
             {profilesLoading && <div className="flex items-center justify-center gap-2 py-2 text-xs font-bold text-emerald-800"><Loader2 className="h-4 w-4 animate-spin" />جاري تحميل الحسابات…</div>}
             {conflictAccounts.map(({ key, requests }) => {
               const booking = requests[0];
@@ -302,8 +318,8 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                   {requests.length > 1 && <span className="rounded-full bg-gray-100 px-2 py-1 text-[9px] font-bold text-gray-600">{requests.length} طلبات من نفس الحساب</span>}
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  <button type="button" disabled={!!updatingBookingId} onClick={() => void updateBooking(booking.id, 'مقبول')} className="rounded-xl bg-emerald-100 py-2.5 text-xs font-black text-emerald-800 disabled:opacity-50"><CheckCircle2 className="ml-1 inline h-4 w-4" />{updatingBookingId === booking.id ? 'جاري التنفيذ…' : 'قبول'}</button>
-                  <button type="button" disabled={!!updatingBookingId} onClick={() => void updateBooking(booking.id, 'مرفوض')} className="rounded-xl bg-rose-100 py-2.5 text-xs font-black text-rose-800 disabled:opacity-50"><XCircle className="ml-1 inline h-4 w-4" />رفض</button>
+                  <button type="button" disabled={!!updatingBookingId} onClick={() => void confirmBookingUpdate(booking, 'مقبول', true)} className="rounded-xl bg-emerald-100 py-2.5 text-xs font-black text-emerald-800 disabled:opacity-50"><CheckCircle2 className="ml-1 inline h-4 w-4" />{updatingBookingId === booking.id ? 'جاري التنفيذ…' : 'قبول'}</button>
+                  <button type="button" disabled={!!updatingBookingId} onClick={() => void confirmBookingUpdate(booking, 'مرفوض', true)} className="rounded-xl bg-rose-100 py-2.5 text-xs font-black text-rose-800 disabled:opacity-50"><XCircle className="ml-1 inline h-4 w-4" />رفض</button>
                 </div>
               </article>;
             })}
