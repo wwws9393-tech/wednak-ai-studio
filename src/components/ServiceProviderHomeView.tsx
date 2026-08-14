@@ -1,11 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Camera, Calendar, CheckCircle2, XCircle, Clock, Sparkles, Save, AlertCircle, Tag, Image as ImageIcon, Upload, Trash2, Video } from 'lucide-react';
+import { Camera, CheckCircle2, Clock, Sparkles, Save, AlertCircle, Tag, Image as ImageIcon, Upload, Trash2, Video } from 'lucide-react';
 import { ServiceProvider, Booking, UserProfile, FeedPost, ServiceCategory } from '../types';
 import { createBusinessOffer, saveOwnedServiceProvider } from '../lib/business';
 import { uploadOwnerMedia } from '../lib/storage';
 import { CroppedImageInput } from './CroppedImageInput';
 import { MediaViewer } from './MediaViewer';
-import { BookingSchedule } from './BookingSchedule';
 
 interface ServiceProviderHomeViewProps {
   currentUser: UserProfile;
@@ -14,7 +13,7 @@ interface ServiceProviderHomeViewProps {
   posts?: FeedPost[];
   onUpdateProvider?: (updatedProvider: ServiceProvider) => void;
   onUpdateServiceProvider?: (updatedProvider: ServiceProvider) => void;
-  onUpdateBookingStatus: (bookingId: string, newStatus: Booking['status']) => Promise<void> | void;
+  onOpenBookings: (filter: 'قيد المراجعة' | 'مقبول') => void;
   onCreatePost: (post: Omit<FeedPost, 'id' | 'createdAt' | 'likesCount' | 'sharesCount'>) => Promise<void> | void;
   onDeletePost?: (postId: string) => Promise<void> | void;
   onUpdatePostDescription?: (postId:string,caption:string)=>Promise<void>|void;
@@ -36,7 +35,7 @@ const FieldLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 );
 
 export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (props) => {
-  const { currentUser, serviceProviders, bookings, posts = [], onUpdateBookingStatus, onCreatePost, onDeletePost, onUpdatePostDescription } = props;
+  const { currentUser, serviceProviders, bookings, posts = [], onOpenBookings, onCreatePost, onDeletePost, onUpdatePostDescription } = props;
   const notifyUpdated = props.onUpdateProvider || props.onUpdateServiceProvider || (() => undefined);
   const persistedProvider = useMemo(
     () => serviceProviders.find((provider) => provider.ownerId === currentUser.id || (!!currentUser.ownedProviderId && provider.id === currentUser.ownedProviderId)),
@@ -49,7 +48,6 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
   const [portfolioDirty, setPortfolioDirty] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [updatingBookingId, setUpdatingBookingId] = useState('');
   const [viewingPortfolioUrl,setViewingPortfolioUrl]=useState('');
   const [viewingPost,setViewingPost]=useState<FeedPost|null>(null);
   const [postTitle, setPostTitle] = useState('');
@@ -72,7 +70,6 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
   const providerBookings = bookings.filter((booking) => booking.targetOwnerId === currentUser.id && booking.itemType === 'provider');
   const pendingBookings = providerBookings.filter((booking) => booking.status === 'قيد المراجعة' || booking.status === 'pending');
   const acceptedBookings = providerBookings.filter((booking) => booking.status === 'مقبول' || booking.status === 'accepted');
-  const pendingConflicts=(booking:Booking)=>pendingBookings.filter(other=>other.id!==booking.id&&other.date===booking.date&&(other.startTime||other.timeSlot)===(booking.startTime||booking.timeSlot)&&(other.endTime||'')===(booking.endTime||'')).length;
   const ownPosts = posts.filter((post) => post.authorId === currentUser.id);
   const unifiedWorks=[...(draft.portfolio||[]).map(url=>({kind:'portfolio' as const,url,type:isVideoUrl(url)?'video' as const:'image' as const,title:'عمل من المعرض',description:draft.portfolioDescriptions?.[url]})),...ownPosts.map(post=>({kind:'post' as const,url:post.mediaUrl,type:post.mediaType,title:post.title,description:post.caption,post}))];
   const setField = <K extends keyof ServiceProvider>(key: K, value: ServiceProvider[K]) => setDraft((prev) => ({ ...prev, [key]: value }));
@@ -132,16 +129,6 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
     }
   };
 
-  const updateBooking = async (bookingId: string, status: Booking['status']) => {
-    if (updatingBookingId) return;
-    setError(''); setMessage(''); setUpdatingBookingId(bookingId);
-    try {
-      await onUpdateBookingStatus(bookingId, status);
-      setMessage(status === 'مقبول' ? 'تم قبول الحجز وتثبيت الموعد.' : 'تم رفض الحجز.');
-    } catch (err) { const raw=err instanceof Error?err.message:''; setError(raw.includes('محجوز')?'يتعارض هذا الطلب مع حجز مؤكد في نفس التاريخ والوقت. يمكنك رفضه أو قبول طلب بموعد مختلف.':raw||'تعذر تحديث الحجز.'); }
-    finally { setUpdatingBookingId(''); }
-  };
-
   const publishPost = async (event: React.FormEvent) => {
     event.preventDefault(); setError('');
     const active = persistedProvider || (draft.id ? draft : null);
@@ -171,18 +158,18 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
         <span className="bg-amber-400 text-black text-xs font-black px-3 py-1 rounded-full">حساب مزود خدمة</span>
         <h1 className="text-2xl font-black text-amber-100 mt-2">أهلاً {currentUser.name}</h1>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
-          <div className="bg-white/10 p-3 rounded-2xl"><Clock className="w-4 h-4 text-amber-300"/><b className="block mt-1">{pendingBookings.length}</b><span className="text-[11px]">طلبات جديدة</span></div>
-          <div className="bg-white/10 p-3 rounded-2xl"><CheckCircle2 className="w-4 h-4 text-emerald-300"/><b className="block mt-1">{acceptedBookings.length}</b><span className="text-[11px]">حجوزات مؤكدة</span></div>
-          <div className="bg-white/10 p-3 rounded-2xl"><Camera className="w-4 h-4 text-blue-300"/><b className="block mt-1">{draft.serviceCategory}</b><span className="text-[11px]">نوع الخدمة</span></div>
-          <div className="bg-white/10 p-3 rounded-2xl"><Tag className="w-4 h-4 text-amber-300"/><b className="block mt-1">{Number(draft.priceStart || 0).toLocaleString('ar-IQ')}</b><span className="text-[11px]">ابتداءً من د.ع</span></div>
+          <button type="button" onClick={()=>onOpenBookings('قيد المراجعة')} className="bg-white/10 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-amber-300 p-3 rounded-2xl text-right transition" aria-label="فتح الطلبات الجديدة"><Clock className="w-4 h-4 text-amber-300"/><b className="block mt-1">{pendingBookings.length}</b><span className="text-[11px]">طلبات جديدة</span></button>
+          <button type="button" onClick={()=>onOpenBookings('مقبول')} className="bg-white/10 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-emerald-300 p-3 rounded-2xl text-right transition" aria-label="فتح الحجوزات المؤكدة"><CheckCircle2 className="w-4 h-4 text-emerald-300"/><b className="block mt-1">{acceptedBookings.length}</b><span className="text-[11px]">حجوزات مؤكدة</span></button>
+          <button type="button" onClick={()=>document.getElementById('provider-business-page')?.scrollIntoView({behavior:'smooth',block:'start'})} className="bg-white/10 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-blue-300 p-3 rounded-2xl text-right transition" aria-label="فتح صفحة الخدمة"><Camera className="w-4 h-4 text-blue-300"/><b className="block mt-1">{draft.serviceCategory}</b><span className="text-[11px]">نوع الخدمة</span></button>
+          <button type="button" onClick={()=>{setIsEditing(true);setTimeout(()=>document.getElementById('provider-business-page')?.scrollIntoView({behavior:'smooth',block:'start'}),0)}} className="bg-white/10 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-amber-300 p-3 rounded-2xl text-right transition" aria-label="تعديل سعر الخدمة"><Tag className="w-4 h-4 text-amber-300"/><b className="block mt-1">{Number(draft.priceStart || 0).toLocaleString('ar-IQ')}</b><span className="text-[11px]">ابتداءً من د.ع</span></button>
         </div>
       </div>
 
       {error && <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs font-bold flex gap-2"><AlertCircle className="w-4 h-4"/>{error}</div>}
       {message && <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 text-xs font-bold">{message}</div>}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <section className="bg-white p-5 rounded-3xl border border-gray-200 space-y-4">
+      <div className="grid grid-cols-1 gap-6">
+        <section id="provider-business-page" className="bg-white p-5 rounded-3xl border border-gray-200 space-y-4 scroll-mt-24">
           <div className="flex items-center justify-between"><h2 className="font-bold flex items-center gap-2"><Camera className="w-5 h-5 text-emerald-700"/>صفحة الخدمة</h2>{persistedProvider && <button onClick={() => setIsEditing((v) => !v)} className="text-xs font-bold text-emerald-800 underline">{isEditing ? 'إلغاء' : 'تعديل'}</button>}</div>
           {!isEditing && persistedProvider ? (
             <div className="space-y-3">
@@ -205,13 +192,7 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
           )}
         </section>
 
-        <section className="bg-white p-5 rounded-3xl border border-gray-200 space-y-3">
-          <h2 className="font-bold flex items-center gap-2"><Calendar className="w-5 h-5 text-emerald-700"/>الحجوزات الواردة ({providerBookings.length})</h2>
-          {providerBookings.length === 0 ? <div className="p-8 text-center text-xs text-gray-500 border border-dashed rounded-2xl">لا توجد حجوزات موجهة إلى خدمتك حالياً.</div> : providerBookings.map((booking)=><div key={booking.id} className="p-4 border rounded-2xl space-y-2"><div className="flex justify-between gap-2"><b className="text-xs">{booking.requesterName || booking.customerName}</b><span className={`text-[11px] font-bold ${booking.status === 'مقبول' ? 'text-emerald-700' : booking.status === 'مرفوض' ? 'text-rose-700' : 'text-amber-700'}`}>{booking.status}</span></div><div className="text-[11px] text-gray-600">{booking.date} • {booking.startTime || booking.timeSlot} {booking.endTime ? `- ${booking.endTime}` : ''}</div>{pendingConflicts(booking)>0&&(booking.status==='قيد المراجعة'||booking.status==='pending')&&<div className="p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-[11px] font-bold text-amber-900">⚠️ انتبه: يوجد {pendingConflicts(booking)} طلب آخر قيد المراجعة بنفس التاريخ والوقت.</div>}{(booking.status === 'قيد المراجعة' || booking.status === 'pending') && <div className="flex gap-2"><button disabled={!!updatingBookingId} type="button" onClick={()=>void updateBooking(booking.id,'مقبول')} className="px-3 py-2 bg-emerald-100 disabled:opacity-50 text-emerald-800 rounded-xl text-xs font-bold"><CheckCircle2 className="inline w-4 h-4 ml-1"/>{updatingBookingId===booking.id?'جاري التنفيذ...':'قبول'}</button><button disabled={!!updatingBookingId} type="button" onClick={()=>void updateBooking(booking.id,'مرفوض')} className="px-3 py-2 bg-rose-100 disabled:opacity-50 text-rose-800 rounded-xl text-xs font-bold"><XCircle className="inline w-4 h-4 ml-1"/>رفض</button></div>}</div>)}
-        </section>
       </div>
-
-      <BookingSchedule bookings={providerBookings}/>
 
       <section className="hidden">
         <div className="flex items-center justify-between"><h2 className="font-bold flex gap-2"><Camera className="w-5 h-5 text-emerald-700"/>معرض الأعمال</h2><span className="text-[11px] text-gray-500">صور وفيديوهات تظهر للزبون داخل صفحتك</span></div>

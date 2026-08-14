@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Calendar, Clock, MapPin, CheckCircle2, XCircle, AlertCircle, Eye, ArrowRight } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Calendar, MapPin, CheckCircle2, XCircle, Eye, ArrowRight } from 'lucide-react';
 import { Booking, BookingStatus } from '../types';
 import { AccountType } from '../types';
 import { BookingSchedule } from './BookingSchedule';
@@ -9,20 +9,60 @@ interface BookingsViewProps {
   onSelectBooking: (booking: Booking) => void;
   onSelectTab: (tab: string) => void;
   accountType?: AccountType;
+  initialFilter?: string;
+  onUpdateBookingStatus?: (bookingId: string, newStatus: Booking['status']) => Promise<void> | void;
 }
+
+const normalizeStatus = (status: BookingStatus): 'قيد المراجعة' | 'مقبول' | 'مرفوض' | 'ملغي' | 'مكتمل' => {
+  if (status === 'pending') return 'قيد المراجعة';
+  if (status === 'accepted') return 'مقبول';
+  if (status === 'rejected') return 'مرفوض';
+  if (status === 'cancelled') return 'ملغي';
+  if (status === 'completed') return 'مكتمل';
+  return status;
+};
 
 export const BookingsView: React.FC<BookingsViewProps> = ({
   bookings = [],
   onSelectBooking,
   onSelectTab,
   accountType,
+  initialFilter = 'الكل',
+  onUpdateBookingStatus,
 }) => {
-  const [activeFilter, setActiveFilter] = useState<string>('الكل');
+  const [activeFilter, setActiveFilter] = useState<string>(initialFilter);
+  const [updatingBookingId, setUpdatingBookingId] = useState('');
+  const [actionMessage, setActionMessage] = useState('');
+  const [actionError, setActionError] = useState('');
+  const isBusinessAccount = accountType === 'صاحب قاعة' || accountType === 'مزود خدمة';
+
+  useEffect(() => setActiveFilter(initialFilter), [initialFilter]);
 
   const filteredBookings = bookings.filter((b) => {
     if (activeFilter === 'الكل') return true;
-    return b.status === activeFilter;
+    return normalizeStatus(b.status) === activeFilter;
   });
+
+  const pendingConflicts = (booking: Booking) => bookings.filter((other) =>
+    other.id !== booking.id &&
+    other.itemId === booking.itemId &&
+    other.date === booking.date &&
+    normalizeStatus(other.status) === 'قيد المراجعة' &&
+    (other.startTime || other.timeSlot) === (booking.startTime || booking.timeSlot) &&
+    (other.endTime || '') === (booking.endTime || '')
+  ).length;
+
+  const updateBooking = async (bookingId: string, status: Booking['status']) => {
+    if (!onUpdateBookingStatus || updatingBookingId) return;
+    setUpdatingBookingId(bookingId); setActionMessage(''); setActionError('');
+    try {
+      await onUpdateBookingStatus(bookingId, status);
+      setActionMessage(status === 'مقبول' ? 'تم قبول الحجز وتثبيت الموعد.' : 'تم رفض الطلب بنجاح.');
+    } catch (error) {
+      const raw = error instanceof Error ? error.message : '';
+      setActionError(raw.includes('محجوز') ? 'يتعارض هذا الطلب مع حجز مؤكد في نفس التاريخ والفترة.' : raw || 'تعذر تحديث الحجز.');
+    } finally { setUpdatingBookingId(''); }
+  };
 
   const getStatusBadgeClass = (status: BookingStatus) => {
     switch (status) {
@@ -48,9 +88,9 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
         <div>
           <h1 className="text-2xl font-black flex items-center gap-2">
             <Calendar className="w-6 h-6 text-amber-300" />
-            سجل الحجوزات والطلبات
+            {isBusinessAccount ? 'الحجوزات الواردة' : 'حجوزاتي'}
           </h1>
-          <p className="text-xs text-amber-100 mt-1">متابعة حالة الطلبات، مواعيد الحجوزات، وقيم العربون المسددة</p>
+          <p className="text-xs text-amber-100 mt-1">{isBusinessAccount ? 'إدارة الطلبات والمواعيد من مكان واحد' : 'متابعة حالة طلباتك ومواعيد حجوزاتك'}</p>
         </div>
 
         <button
@@ -63,7 +103,10 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
       </div>
 
       {/* Filter Tabs */}
-      {(accountType==='صاحب قاعة'||accountType==='مزود خدمة')&&<BookingSchedule bookings={bookings}/>}
+      {isBusinessAccount && <BookingSchedule bookings={bookings}/>}
+
+      {actionMessage && <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 text-xs font-bold">{actionMessage}</div>}
+      {actionError && <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs font-bold">{actionError}</div>}
 
       <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-gray-200">
         {['الكل', 'قيد المراجعة', 'مقبول', 'مرفوض', 'ملغي'].map((filter) => (
@@ -77,7 +120,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
             }`}
             id={`filter-booking-${filter}`}
           >
-            {filter} ({filter === 'الكل' ? bookings.length : bookings.filter(b => b.status === filter).length})
+            {filter} ({filter === 'الكل' ? bookings.length : bookings.filter(b => normalizeStatus(b.status) === filter).length})
           </button>
         ))}
       </div>
@@ -90,7 +133,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
           </div>
           <h3 className="text-base font-bold text-gray-900">لا توجد حجوزات ضمن هذا التبويب</h3>
           <p className="text-xs text-gray-500 max-w-sm mx-auto">
-            يمكنك حجز القاعات ومزودي الخدمات بكل سهولة واختيار الموعد المناسب لليلة زفافك.
+            {isBusinessAccount ? 'ستظهر هنا كل الطلبات الموجهة إلى نشاطك عند وصولها.' : 'يمكنك حجز القاعات ومزودي الخدمات بكل سهولة واختيار الموعد المناسب لليلة زفافك.'}
           </p>
           <button
             onClick={() => onSelectTab('home')}
@@ -120,8 +163,8 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-[10px] font-mono font-bold text-gray-400">{b.id}</span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getStatusBadgeClass(b.status)}`}>
-                      {b.status}
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getStatusBadgeClass(normalizeStatus(b.status) as BookingStatus)}`}>
+                      {normalizeStatus(b.status)}
                     </span>
                   </div>
                   <h3 className="text-sm font-bold text-gray-900 truncate group-hover:text-emerald-800 transition-colors">
@@ -133,6 +176,25 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                   </p>
                 </div>
               </div>
+
+              {isBusinessAccount && <div className="rounded-xl border border-gray-100 bg-white px-3 py-2 text-xs">
+                <span className="text-[10px] text-gray-500 block">صاحب الطلب:</span>
+                <b className="text-gray-900">{b.requesterName || b.customerName || 'غير معروف'}</b>
+                {(b.requesterPhone || b.customerPhone) && <span className="text-gray-500 mr-2" dir="ltr">{b.requesterPhone || b.customerPhone}</span>}
+              </div>}
+
+              {isBusinessAccount && normalizeStatus(b.status) === 'قيد المراجعة' && pendingConflicts(b) > 0 && <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-[11px] font-bold text-amber-900">
+                ⚠️ يوجد {pendingConflicts(b)} طلب آخر بنفس التاريخ والفترة.
+              </div>}
+
+              {isBusinessAccount && normalizeStatus(b.status) === 'قيد المراجعة' && onUpdateBookingStatus && <div className="grid grid-cols-2 gap-2" onClick={(event) => event.stopPropagation()}>
+                <button type="button" disabled={!!updatingBookingId} onClick={() => void updateBooking(b.id, 'مقبول')} className="py-2.5 bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold disabled:opacity-50">
+                  <CheckCircle2 className="inline w-4 h-4 ml-1"/>{updatingBookingId === b.id ? 'جاري التنفيذ...' : 'قبول'}
+                </button>
+                <button type="button" disabled={!!updatingBookingId} onClick={() => void updateBooking(b.id, 'مرفوض')} className="py-2.5 bg-rose-100 text-rose-800 rounded-xl text-xs font-bold disabled:opacity-50">
+                  <XCircle className="inline w-4 h-4 ml-1"/>رفض
+                </button>
+              </div>}
 
               {/* Date & Pricing Bar */}
               <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-100 flex items-center justify-between text-xs">
