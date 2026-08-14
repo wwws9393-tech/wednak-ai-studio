@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { CalendarCheck2, CalendarDays, Clock3 } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { CalendarCheck2, CalendarDays, Clock3, Eye, X } from 'lucide-react';
 import { Booking } from '../types';
 import { getIraqTodayDate } from '../lib/firebase';
 
@@ -24,8 +24,30 @@ const range = (start: string, end: string) => {
 export const BookingSchedule: React.FC<{ bookings: Booking[] }> = ({ bookings }) => {
   const today = getIraqTodayDate();
   const [date, setDate] = useState(today);
+  const [showReservedDetails, setShowReservedDetails] = useState(false);
   const accepted = useMemo(() => bookings.filter((booking) => ['مقبول', 'accepted'].includes(booking.status)), [bookings]);
   const pending = useMemo(() => bookings.filter((booking) => ['قيد المراجعة', 'pending'].includes(booking.status)), [bookings]);
+  const upcomingAccepted = useMemo(() => accepted
+    .filter((booking) => booking.date >= today)
+    .sort((first, second) => {
+      const dateOrder = first.date.localeCompare(second.date);
+      if (dateOrder !== 0) return dateOrder;
+      const firstStart = minutes(first.startTime || '00:00');
+      const secondStart = minutes(second.startTime || '00:00');
+      return (Number.isNaN(firstStart) ? 0 : firstStart) - (Number.isNaN(secondStart) ? 0 : secondStart);
+    }), [accepted, today]);
+
+  useEffect(() => {
+    if (!showReservedDetails) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setShowReservedDetails(false); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [showReservedDetails]);
 
   const overlapsSlot = (booking: Booking, slot: typeof SLOTS[number]) => {
     if (booking.date !== date) return false;
@@ -68,22 +90,67 @@ export const BookingSchedule: React.FC<{ bookings: Booking[] }> = ({ bookings })
             })}
           </div>
         </div>
-        <div className="rounded-2xl border border-rose-200 bg-rose-50/40 p-4">
+        <div className="rounded-2xl border border-rose-200 bg-rose-50/40 p-4 min-h-40 flex flex-col" style={{ touchAction: 'manipulation' }}>
           <b className="text-sm text-rose-950 flex gap-2"><CalendarCheck2 className="w-4 h-4" />المواعيد والأوقات المحجوزة</b>
-          {accepted.length === 0 ? (
-            <p className="text-xs text-gray-500 mt-4">لا توجد مواعيد مؤكدة محجوزة.</p>
-          ) : (
-            <div className="mt-3 space-y-2 max-h-48 overflow-y-auto">
-              {accepted.map((booking) => (
-                <div key={booking.id} className="bg-white border rounded-xl p-3 flex justify-between gap-3">
-                  <div><b className="text-xs">{booking.date}</b><span className="text-[10px] text-gray-500 block">{booking.requesterName || booking.customerName}</span></div>
-                  <span className="text-xs font-bold flex gap-1"><Clock3 className="w-3.5 h-3.5" />{booking.startTime || booking.timeSlot}{booking.endTime ? ` - ${booking.endTime}` : ''}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={() => setShowReservedDetails(true)}
+            className="m-auto min-w-40 px-5 py-2.5 rounded-xl bg-rose-950 text-white text-xs font-black flex items-center justify-center gap-2 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+          >
+            <Eye className="w-4 h-4" />عرض التفاصيل
+          </button>
         </div>
       </div>
+
+      {showReservedDetails && (
+        <div
+          className="fixed inset-0 z-[120] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setShowReservedDetails(false)}
+          role="presentation"
+          style={{ touchAction: 'pan-y' }}
+        >
+          <div
+            className="w-full max-w-xl max-h-[82dvh] bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-white/30"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reserved-bookings-title"
+            onClick={(event) => event.stopPropagation()}
+            style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }}
+          >
+            <div className="shrink-0 bg-rose-950 text-white px-4 py-4 flex items-center justify-between gap-3">
+              <div>
+                <h3 id="reserved-bookings-title" className="font-black text-base flex items-center gap-2"><CalendarCheck2 className="w-5 h-5" />المواعيد والأوقات المحجوزة</h3>
+                <p className="text-[10px] text-rose-100 mt-1">مرتبة من أقرب موعد إلى الأبعد</p>
+              </div>
+              <button type="button" onClick={() => setShowReservedDetails(false)} className="w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center" aria-label="إغلاق تفاصيل المواعيد">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto overscroll-contain p-3 sm:p-4">
+              {upcomingAccepted.length === 0 ? (
+                <div className="py-12 text-center">
+                  <CalendarDays className="w-10 h-10 text-emerald-600 mx-auto mb-3" />
+                  <p className="text-sm font-bold text-gray-800">لا توجد مواعيد مؤكدة قادمة</p>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-gray-200 overflow-hidden">
+                  <div className="grid grid-cols-[0.9fr_1.1fr_1fr] bg-gray-100 px-3 py-2.5 text-[10px] sm:text-xs font-black text-gray-700">
+                    <span>التاريخ</span><span>الوقت</span><span>صاحب الحجز</span>
+                  </div>
+                  {upcomingAccepted.map((booking, index) => (
+                    <div key={booking.id} className={`grid grid-cols-[0.9fr_1.1fr_1fr] items-center gap-2 px-3 py-3 text-[10px] sm:text-xs ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} border-t border-gray-100`}>
+                      <b className="text-gray-900 break-words" dir="ltr">{booking.date}</b>
+                      <span className="font-bold text-rose-900 flex items-center gap-1 min-w-0"><Clock3 className="w-3.5 h-3.5 shrink-0"/><span className="break-words">{booking.startTime || booking.timeSlot}{booking.endTime ? ` - ${booking.endTime}` : ''}</span></span>
+                      <span className="text-gray-600 break-words">{booking.requesterName || booking.customerName || 'غير معروف'}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 };
