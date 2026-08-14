@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
-import { ArrowLeft, CalendarDays, Sparkles, Tag, X } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Tag, X } from 'lucide-react';
 import { BusinessOffer } from '../types';
+import { WednakLogo } from './WednakLogo';
 
 interface OfferCardProps {
   offer: BusinessOffer;
@@ -14,7 +15,7 @@ export const OfferCard: React.FC<OfferCardProps> = ({ offer, ownerName, ownerIma
   return <button type="button" onClick={onOpen} className="group text-right overflow-hidden rounded-3xl border border-lime-200/90 bg-gradient-to-br from-[#fbfff4] via-white to-emerald-50 shadow-[0_14px_38px_rgba(6,95,70,0.09)] ring-1 ring-emerald-800/10 hover:-translate-y-1 hover:shadow-xl transition-all">
     <div className="relative p-5 bg-gradient-to-l from-emerald-950 via-emerald-900 to-emerald-800 text-white overflow-hidden">
       <span className="absolute -left-8 -top-10 h-28 w-28 rounded-full bg-lime-200/10"/>
-      <div className="relative flex justify-between gap-3"><span className="rounded-full bg-amber-300 px-3 py-1 text-[10px] font-black text-emerald-950 flex items-center gap-1"><Sparkles className="w-3 h-3"/>عرض خاص</span>{discount > 0 && <span className="whitespace-nowrap text-sm font-black text-amber-200" dir="rtl">خصم {discount}٪</span>}</div>
+      <div className="relative flex justify-between gap-3"><span className="flex items-center gap-1 rounded-full bg-amber-300 px-3 py-1 text-[10px] font-black text-emerald-950"><WednakLogo className="h-4 w-4" />عرض خاص</span>{discount > 0 && <span className="whitespace-nowrap text-sm font-black text-amber-200" dir="rtl">خصم {discount}٪</span>}</div>
       <h3 className="relative mt-4 text-lg font-black text-amber-100 line-clamp-1">{offer.title}</h3>
     </div>
     <div className="p-5 space-y-4">

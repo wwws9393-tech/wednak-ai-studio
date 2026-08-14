@@ -321,6 +321,13 @@ export function App() {
   };
   const handleUpdateBookingStatus = async (bookingId: string, newStatus: BookingStatus) => {
     await updateBookingStatusInFirestore(bookingId, newStatus);
+    // Keep the visible cards in sync immediately; the Firestore listener remains
+    // the source of truth and will reconcile the same value afterwards.
+    setBookings((current) => current.map((booking) => (
+      booking.id === bookingId
+        ? { ...booking, status: newStatus, updatedAt: new Date().toISOString() }
+        : booking
+    )));
     await dispatchBookingPush(bookingId, 'updated');
   };
   const resolveBookingRequester = async (booking: Booking): Promise<UserProfile | null> => {
