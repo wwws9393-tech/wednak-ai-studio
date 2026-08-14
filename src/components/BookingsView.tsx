@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Calendar, MapPin, CheckCircle2, XCircle, Eye, ArrowRight } from 'lucide-react';
-import { Booking, BookingStatus } from '../types';
+import { Calendar, MapPin, CheckCircle2, XCircle, Eye, ArrowRight, Loader2, Phone, User, X } from 'lucide-react';
+import { Booking, BookingStatus, UserProfile } from '../types';
 import { AccountType } from '../types';
 import { BookingSchedule } from './BookingSchedule';
 
@@ -11,6 +11,8 @@ interface BookingsViewProps {
   accountType?: AccountType;
   initialFilter?: string;
   onUpdateBookingStatus?: (bookingId: string, newStatus: Booking['status']) => Promise<void> | void;
+  onLoadRequester?: (booking: Booking) => Promise<UserProfile | null>;
+  onOpenRequester?: (booking: Booking) => Promise<void> | void;
 }
 
 const normalizeStatus = (status: BookingStatus): 'قيد المراجعة' | 'مقبول' | 'مرفوض' | 'ملغي' | 'مكتمل' => {
@@ -22,6 +24,29 @@ const normalizeStatus = (status: BookingStatus): 'قيد المراجعة' | 'م
   return status;
 };
 
+const requesterKey = (booking: Booking) => {
+  const accountId = (booking.requesterId || booking.customerId || '').trim();
+  if (accountId) return `id:${accountId}`;
+  const phone = (booking.requesterPhone || booking.customerPhone || '').replace(/\D/g, '');
+  return phone ? `phone:${phone}` : `booking:${booking.id}`;
+};
+
+const isSamePendingSlot = (first: Booking, second: Booking) =>
+  first.itemId === second.itemId &&
+  first.date === second.date &&
+  normalizeStatus(second.status) === 'قيد المراجعة' &&
+  (first.startTime || first.timeSlot) === (second.startTime || second.timeSlot) &&
+  (first.endTime || '') === (second.endTime || '');
+
+const groupPendingAccounts = (anchor: Booking, bookings: Booking[]) => {
+  const grouped = new Map<string, Booking[]>();
+  bookings.filter((booking) => isSamePendingSlot(anchor, booking)).forEach((booking) => {
+    const key = requesterKey(booking);
+    grouped.set(key, [...(grouped.get(key) || []), booking]);
+  });
+  return Array.from(grouped, ([key, requests]) => ({ key, requests }));
+};
+
 export const BookingsView: React.FC<BookingsViewProps> = ({
   bookings = [],
   onSelectBooking,
@@ -29,11 +54,16 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
   accountType,
   initialFilter = 'الكل',
   onUpdateBookingStatus,
+  onLoadRequester,
+  onOpenRequester,
 }) => {
   const [activeFilter, setActiveFilter] = useState<string>(initialFilter);
   const [updatingBookingId, setUpdatingBookingId] = useState('');
   const [actionMessage, setActionMessage] = useState('');
   const [actionError, setActionError] = useState('');
+  const [conflictBooking, setConflictBooking] = useState<Booking | null>(null);
+  const [requesterProfiles, setRequesterProfiles] = useState<Record<string, UserProfile | null>>({});
+  const [profilesLoading, setProfilesLoading] = useState(false);
   const isBusinessAccount = accountType === 'صاحب قاعة' || accountType === 'مزود خدمة';
 
   useEffect(() => setActiveFilter(initialFilter), [initialFilter]);
@@ -43,14 +73,28 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
     return normalizeStatus(b.status) === activeFilter;
   });
 
-  const pendingConflicts = (booking: Booking) => bookings.filter((other) =>
-    other.id !== booking.id &&
-    other.itemId === booking.itemId &&
-    other.date === booking.date &&
-    normalizeStatus(other.status) === 'قيد المراجعة' &&
-    (other.startTime || other.timeSlot) === (booking.startTime || booking.timeSlot) &&
-    (other.endTime || '') === (booking.endTime || '')
-  ).length;
+  const pendingConflicts = (booking: Booking) => {
+    const currentRequester = requesterKey(booking);
+    return new Set(
+      bookings
+        .filter((other) => other.id !== booking.id && isSamePendingSlot(booking, other) && requesterKey(other) !== currentRequester)
+        .map(requesterKey)
+    ).size;
+  };
+
+  const openConflictAccounts = async (booking: Booking) => {
+    const groups = groupPendingAccounts(booking, bookings);
+    setConflictBooking(booking);
+    setRequesterProfiles({});
+    if (!onLoadRequester) return;
+    setProfilesLoading(true);
+    try {
+      const loaded = await Promise.all(groups.map(async (group) => [group.key, await onLoadRequester(group.requests[0])] as const));
+      setRequesterProfiles(Object.fromEntries(loaded));
+    } finally {
+      setProfilesLoading(false);
+    }
+  };
 
   const updateBooking = async (bookingId: string, status: Booking['status']) => {
     if (!onUpdateBookingStatus || updatingBookingId) return;
@@ -78,7 +122,16 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
         return 'bg-gray-100 text-gray-700';
     }
   };
+  const getCardTone = (status: BookingStatus) => {
+    switch (normalizeStatus(status)) {
+      case 'مقبول': return { card: 'border-emerald-500 ring-emerald-100 hover:border-emerald-600 shadow-[0_12px_30px_rgba(5,150,105,0.10)] hover:shadow-[0_16px_38px_rgba(5,150,105,0.16)]', accent: 'via-emerald-500' };
+      case 'قيد المراجعة': return { card: 'border-amber-400 ring-amber-100 hover:border-amber-500 shadow-[0_12px_30px_rgba(217,119,6,0.10)] hover:shadow-[0_16px_38px_rgba(217,119,6,0.16)]', accent: 'via-amber-400' };
+      case 'مرفوض': return { card: 'border-rose-500 ring-rose-100 hover:border-rose-600 shadow-[0_12px_30px_rgba(244,63,94,0.10)] hover:shadow-[0_16px_38px_rgba(244,63,94,0.16)]', accent: 'via-rose-500' };
+      default: return { card: 'border-gray-300 ring-gray-100 hover:border-gray-400 shadow-sm hover:shadow-md', accent: 'via-gray-400' };
+    }
+  };
   const createdText=(value:string)=>{const date=new Date(value);return Number.isNaN(date.getTime())?'غير معروف':date.toLocaleString('ar-IQ',{year:'numeric',month:'long',day:'numeric',hour:'numeric',minute:'2-digit'});};
+  const conflictAccounts = conflictBooking ? groupPendingAccounts(conflictBooking, bookings) : [];
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6" id="bookings-view-container">
@@ -144,14 +197,16 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredBookings.map((b) => (
+          {filteredBookings.map((b) => {
+            const tone = getCardTone(b.status);
+            return (
             <div
               key={b.id}
-              className="relative overflow-hidden bg-gradient-to-br from-white via-white to-amber-50/45 rounded-3xl border border-amber-300/90 ring-1 ring-amber-100 p-4 shadow-[0_12px_30px_rgba(120,83,24,0.09)] hover:border-amber-400 hover:shadow-[0_16px_38px_rgba(120,83,24,0.14)] transition-all flex flex-col justify-between space-y-3 cursor-pointer group"
+              className={`relative overflow-hidden bg-gradient-to-br from-white via-white to-amber-50/45 rounded-3xl border ring-1 p-4 transition-all flex flex-col justify-between space-y-3 cursor-pointer group ${tone.card}`}
               onClick={() => onSelectBooking(b)}
               id={`booking-card-${b.id}`}
             >
-              <span className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-amber-400 to-transparent" aria-hidden="true" />
+              <span className={`pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent to-transparent ${tone.accent}`} aria-hidden="true" />
               <div className="flex items-start gap-3">
                 <img
                   src={b.itemImage}
@@ -184,9 +239,10 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                 {(b.requesterPhone || b.customerPhone) && <span className="text-gray-500 mr-2" dir="ltr">{b.requesterPhone || b.customerPhone}</span>}
               </div>}
 
-              {isBusinessAccount && normalizeStatus(b.status) === 'قيد المراجعة' && pendingConflicts(b) > 0 && <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-[11px] font-bold text-amber-900">
+              {isBusinessAccount && normalizeStatus(b.status) === 'قيد المراجعة' && pendingConflicts(b) > 0 && <button type="button" onClick={(event) => { event.stopPropagation(); void openConflictAccounts(b); }} className="w-full p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-[11px] font-bold text-amber-900 text-right hover:bg-amber-100 transition-colors">
                 ⚠️ يوجد {pendingConflicts(b)} طلب آخر بنفس التاريخ والفترة.
-              </div>}
+                <span className="block mt-1 text-[9px] text-amber-700">اضغط لعرض الحسابات واتخاذ القرار</span>
+              </button>}
 
               {isBusinessAccount && normalizeStatus(b.status) === 'قيد المراجعة' && onUpdateBookingStatus && <div className="grid grid-cols-2 gap-2" onClick={(event) => event.stopPropagation()}>
                 <button type="button" disabled={!!updatingBookingId} onClick={() => void updateBooking(b.id, 'مقبول')} className="py-2.5 bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold disabled:opacity-50">
@@ -218,9 +274,42 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
               </div>
               <div className="pt-2 border-t border-black text-[11px] font-medium text-black">تاريخ إنشاء الحجز: {createdText(b.createdAt)}</div>
             </div>
-          ))}
+          );})}
         </div>
       )}
+
+      {conflictBooking && conflictAccounts.length > 1 && <div className="fixed inset-0 z-[140] flex items-center justify-center bg-slate-950/70 p-3 backdrop-blur-sm" dir="rtl" onClick={() => setConflictBooking(null)}>
+        <section role="dialog" aria-modal="true" aria-label="الطلبات المتنافسة" onClick={(event) => event.stopPropagation()} className="w-full max-w-xl max-h-[88vh] overflow-y-auto rounded-3xl border border-amber-300 bg-white shadow-2xl">
+          <header className="sticky top-0 z-10 flex items-start justify-between gap-3 rounded-t-3xl bg-gradient-to-l from-emerald-950 to-emerald-800 p-4 text-white">
+            <div><h2 className="text-base font-black">طلبات بنفس التاريخ والفترة</h2><p className="mt-1 text-[10px] text-emerald-100">{conflictBooking.itemName} · {conflictBooking.date} · {conflictBooking.startTime || conflictBooking.timeSlot} — {conflictBooking.endTime || ''}</p></div>
+            <button type="button" onClick={() => setConflictBooking(null)} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10" aria-label="إغلاق"><X className="h-5 w-5" /></button>
+          </header>
+          <div className="space-y-3 p-4">
+            {profilesLoading && <div className="flex items-center justify-center gap-2 py-2 text-xs font-bold text-emerald-800"><Loader2 className="h-4 w-4 animate-spin" />جاري تحميل الحسابات…</div>}
+            {conflictAccounts.map(({ key, requests }) => {
+              const booking = requests[0];
+              const profile = requesterProfiles[key];
+              const name = profile?.name || booking.requesterName || booking.customerName || 'صاحب الطلب';
+              const phone = profile?.phone || booking.requesterPhone || booking.customerPhone || '';
+              return <article key={key} className="rounded-2xl border border-amber-200 bg-gradient-to-br from-white to-amber-50/60 p-3 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full border-2 border-emerald-600 bg-emerald-50 text-emerald-800">{profile?.profileImageUrl ? <img src={profile.profileImageUrl} alt={name} className="h-full w-full object-cover" /> : <User className="h-5 w-5" />}</div>
+                  <button type="button" onClick={() => { setConflictBooking(null); void onOpenRequester?.(booking); }} className="min-w-0 flex-1 text-right">
+                    <b className="block truncate text-sm text-gray-950">{name}</b>
+                    {phone && <span className="mt-1 flex items-center gap-1 text-[10px] text-gray-500" dir="ltr"><Phone className="h-3 w-3" />{phone}</span>}
+                    <span className="mt-1 block text-[9px] font-bold text-emerald-700">عرض الملف الشخصي</span>
+                  </button>
+                  {requests.length > 1 && <span className="rounded-full bg-gray-100 px-2 py-1 text-[9px] font-bold text-gray-600">{requests.length} طلبات من نفس الحساب</span>}
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button type="button" disabled={!!updatingBookingId} onClick={() => void updateBooking(booking.id, 'مقبول')} className="rounded-xl bg-emerald-100 py-2.5 text-xs font-black text-emerald-800 disabled:opacity-50"><CheckCircle2 className="ml-1 inline h-4 w-4" />{updatingBookingId === booking.id ? 'جاري التنفيذ…' : 'قبول'}</button>
+                  <button type="button" disabled={!!updatingBookingId} onClick={() => void updateBooking(booking.id, 'مرفوض')} className="rounded-xl bg-rose-100 py-2.5 text-xs font-black text-rose-800 disabled:opacity-50"><XCircle className="ml-1 inline h-4 w-4" />رفض</button>
+                </div>
+              </article>;
+            })}
+          </div>
+        </section>
+      </div>}
 
     </div>
   );

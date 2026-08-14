@@ -6,7 +6,6 @@ import {
   Check,
   Crosshair,
   ExternalLink,
-  Gem,
   Loader2,
   LocateFixed,
   MapPin,
@@ -166,7 +165,6 @@ export const HallMap: React.FC<HallMapProps> = ({
   return (
     <>
       <section className={`wednak-location-neon relative isolate z-0 overflow-hidden rounded-3xl bg-white shadow-sm ${compact ? '' : 'mt-1'}`}>
-        <span className="wednak-location-orbit" aria-hidden="true"><span className="wednak-location-ring"><Gem /></span></span>
         {coordinates ? (
           <button type="button" onClick={() => setIsOpen(true)} className="group relative block h-40 w-full overflow-hidden text-right" aria-label={`عرض موقع ${hallName} على الخريطة`}>
             <MapContainer key={`${coordinates.latitude}-${coordinates.longitude}`} center={[coordinates.latitude, coordinates.longitude]} zoom={15} dragging={false} doubleClickZoom={false} scrollWheelZoom={false} zoomControl={false} attributionControl={false} className="h-full w-full pointer-events-none">

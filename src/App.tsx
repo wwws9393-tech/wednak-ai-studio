@@ -323,6 +323,24 @@ export function App() {
     await updateBookingStatusInFirestore(bookingId, newStatus);
     await dispatchBookingPush(bookingId, 'updated');
   };
+  const resolveBookingRequester = async (booking: Booking): Promise<UserProfile | null> => {
+    const requesterId = booking.requesterId || booking.customerId;
+    const fallback: UserProfile = {
+      id: requesterId || `booking-requester-${booking.id}`,
+      name: booking.requesterName || booking.customerName || 'صاحب الطلب',
+      phone: booking.requesterPhone || booking.customerPhone || '',
+      email: '',
+      city: '',
+      accountType: 'زبون',
+    };
+    if (!requesterId) return fallback;
+    try { return (await fetchPublicUserProfile(requesterId)) || fallback; }
+    catch { return fallback; }
+  };
+  const openBookingRequester = async (booking: Booking) => {
+    const requester = await resolveBookingRequester(booking);
+    if (requester) setSelectedUserProfile(requester);
+  };
   const handleCancelBooking = async (bookingId: string) => {
     await cancelBookingWithActorInFirestore(bookingId, currentUser);
     await dispatchBookingPush(bookingId, 'updated');
@@ -380,7 +398,7 @@ export function App() {
         </div>;
       case 'search': return <SearchView halls={halls} serviceProviders={serviceProviders} selectedCity={selectedCity} onSelectCity={setSelectedCity} cities={CITIES} favoriteIds={validFavoriteIds} onToggleFavorite={handleToggleFavorite} onSelectHall={setSelectedHallForModal} onBookHall={(h)=>setBookingItemForModal({type:'hall',data:h})} onSelectProvider={setSelectedProviderForModal} onBookProvider={(sp)=>setBookingItemForModal({type:'provider',data:sp})} currentUser={currentUser}/>;
       case 'explore': return <ExploreView posts={filteredPosts} offers={offers} halls={halls} serviceProviders={serviceProviders} likedPostIds={likedPostIds} favoriteIds={validFavoriteIds} onTogglePostLike={handleTogglePostLike} onToggleFavorite={handleToggleFavorite} onSelectHall={setSelectedHallForModal} onBookHall={(h)=>setBookingItemForModal({type:'hall',data:h})} onSelectProvider={setSelectedProviderForModal} onBookProvider={(sp)=>setBookingItemForModal({type:'provider',data:sp})} selectedCity={selectedCity} onSelectCity={setSelectedCity} cities={CITIES} currentUser={currentUser}/>;
-      case 'bookings': return <BookingsView bookings={bookingsWithCurrentImages} accountType={currentUser.accountType} initialFilter={bookingsFilter} onUpdateBookingStatus={handleUpdateBookingStatus} onSelectBooking={setSelectedBookingForDetails} onSelectTab={setCurrentTab}/>;
+      case 'bookings': return <BookingsView bookings={bookingsWithCurrentImages} accountType={currentUser.accountType} initialFilter={bookingsFilter} onUpdateBookingStatus={handleUpdateBookingStatus} onLoadRequester={resolveBookingRequester} onOpenRequester={openBookingRequester} onSelectBooking={setSelectedBookingForDetails} onSelectTab={setCurrentTab}/>;
       case 'favorites': return <FavoritesView favoriteIds={validFavoriteIds} halls={halls} serviceProviders={serviceProviders} onToggleFavorite={handleToggleFavorite} onSelectHall={setSelectedHallForModal} onBookHall={(h)=>setBookingItemForModal({type:'hall',data:h})} onSelectProvider={setSelectedProviderForModal} onBookProvider={(sp)=>setBookingItemForModal({type:'provider',data:sp})} onSelectTab={setCurrentTab}/>;
       case 'notifications': return <NotificationsView notifications={notifications} onMarkAsRead={markNotificationRead} onMarkAllAsRead={markAllNotificationsRead} onOpenNotificationTarget={(n)=>{ if(n.targetBookingId){ const booking=bookings.find((b)=>b.id===n.targetBookingId); if(booking){setSelectedBookingForDetails(booking); return;} } if(n.type==='booking') setCurrentTab('bookings'); else if(n.type==='offer') setCurrentTab('explore'); }}/>;
       case 'complaints': return <ComplaintsView complaints={complaints} currentUser={currentUser} onSubmitComplaint={handleCreateComplaint} isAdmin={false} onUpdateComplaintStatus={handleUpdateComplaintStatus}/>;
