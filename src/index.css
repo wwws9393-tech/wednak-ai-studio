@@ -217,3 +217,63 @@ button, a, input, select, textarea, [role="button"] { touch-action: manipulation
   .wednak-auth-choice, .wednak-auth-primary, .wednak-auth-back { transition: none; }
   .wednak-auth-back:hover, .wednak-auth-back:active { transform: none; }
 }
+
+/* Premium hall-location treatment shared by hall cards, owner pages and visitor details. */
+.wednak-location-neon {
+  border: 1px solid rgb(34 211 238 / .82) !important;
+  box-shadow:
+    0 0 0 1px rgb(103 232 249 / .16),
+    0 0 13px rgb(34 211 238 / .28),
+    inset 0 0 12px rgb(34 211 238 / .09);
+}
+
+.wednak-location-neon::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgb(207 250 254 / .34);
+}
+
+.wednak-location-orbit {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.wednak-location-ring {
+  position: absolute;
+  top: -1px;
+  left: 7%;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border: 1px solid rgb(236 254 255 / .95);
+  border-radius: 999px;
+  color: #67e8f9;
+  background: rgb(6 78 59 / .9);
+  box-shadow: 0 0 8px rgb(34 211 238 / .9), 0 0 14px rgb(34 211 238 / .55);
+  animation: wednak-location-ring-orbit 7s linear infinite;
+}
+
+.wednak-location-ring svg { width: 11px; height: 11px; stroke-width: 2.2; }
+
+@keyframes wednak-location-ring-orbit {
+  0% { top: -2px; left: 7%; transform: translate(-50%, -50%) rotate(0deg); }
+  23% { top: -2px; left: 93%; transform: translate(-50%, -50%) rotate(90deg); }
+  27% { top: 7%; left: calc(100% + 1px); transform: translate(-50%, -50%) rotate(105deg); }
+  48% { top: 93%; left: calc(100% + 1px); transform: translate(-50%, -50%) rotate(180deg); }
+  52% { top: calc(100% + 1px); left: 93%; transform: translate(-50%, -50%) rotate(195deg); }
+  73% { top: calc(100% + 1px); left: 7%; transform: translate(-50%, -50%) rotate(270deg); }
+  77% { top: 93%; left: -1px; transform: translate(-50%, -50%) rotate(285deg); }
+  98% { top: 7%; left: -1px; transform: translate(-50%, -50%) rotate(355deg); }
+  100% { top: -2px; left: 7%; transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wednak-location-ring { animation: none; top: -1px; left: 12%; transform: translate(-50%, -50%); }
+}

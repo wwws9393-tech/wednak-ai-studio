@@ -7,6 +7,7 @@ import { CroppedImageInput } from './CroppedImageInput';
 import { MediaViewer } from './MediaViewer';
 import { BookingStatusSummaryDialog } from './BookingStatusSummaryDialog';
 import { BusinessOffersPanel } from './BusinessOffersPanel';
+import { FeatureSelector, FeaturesDisplay } from './BusinessFeatures';
 
 interface ServiceProviderHomeViewProps {
   currentUser: UserProfile;
@@ -30,7 +31,7 @@ const emptyProvider = (user: UserProfile): ServiceProvider => ({
   serviceCategory: (CATEGORIES.includes(user.serviceCategory as ServiceCategory) ? user.serviceCategory : 'تصوير وفيديو') as ServiceCategory,
   city: user.city || 'بغداد', location: '', rating: 0, reviewsCount: 0,
   priceStart: 0, priceStartFormatted: '0 د.ع', avatar: user.profileImageUrl || '',
-  coverImage: user.coverImageUrl || '', portfolio: [], description: '', phone: user.phone, isVerified: false,
+  coverImage: user.coverImageUrl || '', portfolio: [], features: [], description: '', phone: user.phone, isVerified: false,
 });
 
 const FieldLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
@@ -149,7 +150,7 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
           <button type="button" onClick={()=>setBookingDialog('pending')} className="bg-white/10 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-amber-300 p-3 rounded-2xl text-right transition" aria-label="عرض الطلبات الجديدة"><Clock className="w-4 h-4 text-amber-300"/><b className="block mt-1">{pendingBookings.length}</b><span className="text-[11px]">طلبات جديدة</span></button>
           <button type="button" onClick={()=>setBookingDialog('accepted')} className="bg-white/10 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-emerald-300 p-3 rounded-2xl text-right transition" aria-label="عرض الحجوزات المؤكدة"><CheckCircle2 className="w-4 h-4 text-emerald-300"/><b className="block mt-1">{acceptedBookings.length}</b><span className="text-[11px]">حجوزات مؤكدة</span></button>
           <button type="button" onClick={()=>document.getElementById('provider-business-page')?.scrollIntoView({behavior:'smooth',block:'start'})} className="bg-white/10 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-blue-300 p-3 rounded-2xl text-right transition" aria-label="فتح صفحة الخدمة"><Camera className="w-4 h-4 text-blue-300"/><b className="block mt-1">{draft.serviceCategory}</b><span className="text-[11px]">نوع الخدمة</span></button>
-          <button type="button" onClick={()=>{setIsEditing(true);setTimeout(()=>document.getElementById('provider-business-page')?.scrollIntoView({behavior:'smooth',block:'start'}),0)}} className="bg-white/10 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-amber-300 p-3 rounded-2xl text-right transition" aria-label="تعديل سعر الخدمة"><Tag className="w-4 h-4 text-amber-300"/><b className="block mt-1">{Number(draft.priceStart || 0).toLocaleString('ar-IQ')}</b><span className="text-[11px]">ابتداءً من د.ع</span></button>
+          <div className="bg-white/10 p-3 rounded-2xl text-right" aria-label="سعر الخدمة غير قابل للضغط"><Tag className="w-4 h-4 text-amber-300"/><b className="block mt-1">{Number(draft.priceStart || 0).toLocaleString('ar-IQ')}</b><span className="text-[11px]">ابتداءً من د.ع</span></div>
         </div>
       </div>
 
@@ -162,7 +163,7 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
           {!isEditing && persistedProvider ? (
             <div className="space-y-3">
               <div className="h-44 bg-gray-100 rounded-2xl overflow-hidden">{persistedProvider.coverImage ? <img src={persistedProvider.coverImage} className="w-full h-full object-cover" alt={persistedProvider.name}/> : <div className="w-full h-full flex items-center justify-center text-gray-400"><ImageIcon/></div>}</div>
-              <h3 className="text-lg font-black">{persistedProvider.name}</h3><p className="text-xs text-gray-600">{persistedProvider.serviceCategory} — {persistedProvider.location}</p><p className="text-xs text-gray-600">{persistedProvider.description}</p>
+              <h3 className="text-lg font-black">{persistedProvider.name}</h3><p className="text-xs text-gray-600">{persistedProvider.serviceCategory} — {persistedProvider.location}</p><p className="text-xs text-gray-600">{persistedProvider.description}</p><FeaturesDisplay features={persistedProvider.features} title="المميزات المشمولة في الخدمة" />
             </div>
           ) : (
             <form onSubmit={saveProvider} className="space-y-3">
@@ -174,6 +175,7 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
                 <div><FieldLabel>صورة الحساب</FieldLabel><CroppedImageInput label="اختيار وضبط صورة الحساب" aspect={1} onReady={(f)=>void uploadSingle(f,'avatar')}/>{draft.avatar && <img src={draft.avatar} className="mt-2 h-20 w-20 object-cover rounded-full mx-auto" alt="الحساب"/>}</div>
               </div>
               <div><FieldLabel>السعر الابتدائي (د.ع)</FieldLabel><input type="number" min="0" value={draft.priceStart || ''} onChange={(e)=>setField('priceStart',Number(e.target.value))} className="w-full px-3 py-2 border rounded-xl text-xs"/></div>
+              <FeatureSelector kind="provider" value={draft.features} onChange={(features) => setField('features', features)} />
               <div><FieldLabel>وصف الخدمة</FieldLabel><textarea value={draft.description} onChange={(e)=>setField('description',e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs h-20"/></div>
               <button disabled={isSaving || isUploading} className="w-full py-2.5 bg-emerald-800 disabled:bg-gray-400 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1"><Save className="w-4 h-4"/>{isSaving ? 'جاري الحفظ...' : persistedProvider ? 'حفظ التعديلات' : 'إنشاء صفحة الخدمة'}</button>
             </form>

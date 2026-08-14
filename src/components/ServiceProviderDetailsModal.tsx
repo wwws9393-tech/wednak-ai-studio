@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { X, Star, MapPin, Phone, Heart, CheckCircle2, Camera, Calendar, Shield, Clock, Check, AlertCircle, ShieldCheck, Sparkles } from 'lucide-react';
-import { ServiceProvider, UserProfile, Booking, FeedPost } from '../types';
+import { ServiceProvider, UserProfile, Booking, FeedPost, BusinessOffer } from '../types';
 import { getIraqTodayDate, PendingAvailabilityRange, subscribeBookingAvailability } from '../lib/firebase';
 import { MediaViewer } from './MediaViewer';
+import { FeaturesDisplay } from './BusinessFeatures';
+import { BusinessOffersShowcase } from './BusinessOffersShowcase';
 
 interface ServiceProviderDetailsModalProps {
   provider: ServiceProvider | null;
@@ -14,6 +16,7 @@ interface ServiceProviderDetailsModalProps {
   currentUser?: UserProfile;
   bookings?: Booking[];
   posts?: FeedPost[];
+  offers?: BusinessOffer[];
 }
 
 const isVideoUrl = (url: string) => /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url);
@@ -27,6 +30,7 @@ export const ServiceProviderDetailsModal: React.FC<ServiceProviderDetailsModalPr
   onBookProvider,
   currentUser,
   posts = [],
+  offers = [],
 }) => {
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => getIraqTodayDate());
   const [busyMinutes, setBusyMinutes] = useState<number[]>([]);
@@ -92,6 +96,10 @@ export const ServiceProviderDetailsModal: React.FC<ServiceProviderDetailsModalPr
           </div>
 
           <div><h3 className="text-sm font-bold text-gray-900 mb-1">تفاصيل الخدمة:</h3><p className="text-xs text-gray-600 leading-relaxed bg-gray-50 p-3 rounded-2xl border border-gray-100">{provider.description || 'لم يضف مزود الخدمة وصفاً بعد.'}</p></div>
+
+          <BusinessOffersShowcase offers={offers} targetId={provider.id} ownerName={provider.name} ownerImage={provider.avatar || provider.coverImage} />
+
+          <FeaturesDisplay features={provider.features} title="المميزات المشمولة في الخدمة" />
 
           {(portfolio.length > 0 || providerPosts.length > 0) && <div><h3 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-1.5"><Camera className="w-4 h-4 text-emerald-600" />معرض الأعمال ({portfolio.length + providerPosts.length})</h3><div className="grid grid-cols-2 sm:grid-cols-3 gap-3">{portfolio.map((url, idx) => <button onClick={()=>setViewing({url,type:isVideoUrl(url)?'video':'image',description:provider.portfolioDescriptions?.[url]})} key={`portfolio-${idx}`} className="text-right aspect-square rounded-xl overflow-hidden border bg-gray-100 relative">{isVideoUrl(url) ? <video src={url} muted className="w-full h-full object-cover" /> : <img src={url} alt={`عمل ${idx + 1}`} className="w-full h-full object-cover" />}<span className="absolute bottom-0 inset-x-0 bg-black/60 text-white p-2 text-[10px]">{provider.portfolioDescriptions?.[url]||'بدون وصف'}</span></button>)}{providerPosts.map(post => <button onClick={()=>setViewing({url:post.mediaUrl,type:post.mediaType,title:post.title,description:post.caption})} key={post.id} className="text-right aspect-square rounded-xl overflow-hidden border bg-gray-100 relative">{post.mediaType === 'video' ? <video src={post.mediaUrl} muted className="w-full h-full object-cover" /> : <img src={post.mediaUrl} alt={post.title} className="w-full h-full object-cover" />}<div className="absolute bottom-0 inset-x-0 p-2 bg-black/60 text-white text-[10px] line-clamp-1">{post.title}</div></button>)}</div></div>}
 

@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Star, MapPin, Users, Sparkles, CheckCircle, Heart, ArrowLeft, Shield, Calendar, Clock, Check, AlertCircle, ShieldCheck, Play } from 'lucide-react';
+import { X, Star, MapPin, Users, Sparkles, Heart, ArrowLeft, Shield, Calendar, Clock, Check, AlertCircle, ShieldCheck } from 'lucide-react';
 import { formatAreaWithCity } from '../lib/location';
-import { Hall, UserProfile, Booking, FeedPost } from '../types';
+import { Hall, UserProfile, Booking, FeedPost, BusinessOffer } from '../types';
 import { getIraqTodayDate, PendingAvailabilityRange, subscribeBookingAvailability } from '../lib/firebase';
 import { MediaViewer } from './MediaViewer';
 import { HallMap } from './HallMap';
+import { FeaturesDisplay } from './BusinessFeatures';
+import { BusinessOffersShowcase } from './BusinessOffersShowcase';
 
 interface HallDetailsModalProps {
   hall: Hall | null;
@@ -16,6 +18,7 @@ interface HallDetailsModalProps {
   currentUser?: UserProfile;
   bookings?: Booking[];
   posts?: FeedPost[];
+  offers?: BusinessOffer[];
 }
 
 const FALLBACK_HALL_IMAGE = 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1200&q=80';
@@ -29,6 +32,7 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
   onBookHall,
   currentUser,
   posts = [],
+  offers = [],
 }) => {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => getIraqTodayDate());
@@ -123,9 +127,11 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
 
           <div><h3 className="text-sm font-bold text-gray-900 mb-1">عن القاعة:</h3><p className="text-xs text-gray-600 leading-relaxed bg-gray-50 p-3 rounded-2xl border border-gray-100">{hall.description || 'لا يوجد وصف مضاف بعد.'}</p></div>
 
+          <BusinessOffersShowcase offers={offers} targetId={hall.id} ownerName={hall.name} ownerImage={hall.profileImageUrl || hall.coverImage || mainImage} />
+
           {hallPosts.length > 0 && <div><h3 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2"><Sparkles className="w-4 h-4 text-amber-500"/>معرض أعمال القاعة ({hallPosts.length})</h3><div className="grid grid-cols-2 sm:grid-cols-3 gap-3">{hallPosts.map(post=><button onClick={()=>setViewingPost(post)} key={post.id} className="text-right rounded-2xl overflow-hidden border bg-gray-100 shadow-sm hover:shadow-lg transition"><div className="aspect-square relative">{post.mediaType==='video'?<video src={post.mediaUrl} muted preload="metadata" className="w-full h-full object-cover"/>:<img src={post.mediaUrl} alt={post.title} className="w-full h-full object-cover"/>}<div className="absolute bottom-0 inset-x-0 bg-black/65 text-white p-2"><b className="text-[11px] block">{post.title}</b><span className="text-[9px] line-clamp-1">{post.caption||'بدون وصف'}</span></div></div></button>)}</div></div>}
 
-          {Array.isArray(hall.features) && hall.features.length > 0 && <div><h3 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-1.5"><Sparkles className="w-4 h-4 text-amber-500" />المميزات المشمولة في الحجز:</h3><div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{hall.features.map((feature, idx) => <div key={idx} className="flex items-center gap-2 bg-emerald-50/40 p-2.5 rounded-xl border border-emerald-100/60 text-xs text-emerald-900 font-semibold"><CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" /><span>{feature}</span></div>)}</div></div>}
+          <FeaturesDisplay features={hall.features} title="المميزات المشمولة في الحجز" />
 
           <div className="bg-gradient-to-br from-amber-50/60 via-white to-emerald-50/60 p-4 rounded-3xl border border-amber-200/80 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-100 pb-3"><div><h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5"><Calendar className="w-4 h-4 text-emerald-700" />جدول المواعيد والتوفر لـ ({hall.name})</h3><p className="text-[11px] text-gray-500">الأحمر محجوز، والبرتقالي قيد المراجعة، والأخضر متاح</p></div><input type="date" value={selectedCalendarDate} onChange={(e) => setSelectedCalendarDate(e.target.value)} min={getIraqTodayDate()} className="px-3 py-1.5 bg-white rounded-xl border border-gray-300 text-xs font-bold text-gray-800" id="hall-calendar-date-picker" /></div>

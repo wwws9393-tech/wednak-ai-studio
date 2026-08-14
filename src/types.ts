@@ -42,6 +42,7 @@ export interface ServiceProvider {
   coverImage: string;
   portfolio: string[];
   portfolioDescriptions?: Record<string,string>;
+  features?: string[];
   description: string;
   phone: string;
   isVerified?: boolean;

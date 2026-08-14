@@ -18,6 +18,7 @@ export async function saveOwnedHall(hall: Hall): Promise<Hall> {
     id: hallRef.id,
     ownerId: uid,
     images: Array.isArray(hall.images) ? hall.images.filter(Boolean) : [],
+    features: Array.isArray(hall.features) ? hall.features.map((feature) => feature.trim()).filter(Boolean) : [],
     price: Number(hall.price) || 0,
     capacity: Number(hall.capacity) || 0,
     deposit: Number(hall.deposit) || 0,
@@ -39,6 +40,7 @@ export async function saveOwnedServiceProvider(provider: ServiceProvider): Promi
     id: providerRef.id,
     ownerId: uid,
     portfolio: Array.isArray(provider.portfolio) ? provider.portfolio.filter(Boolean) : [],
+    features: Array.isArray(provider.features) ? provider.features.map((feature) => feature.trim()).filter(Boolean) : [],
     priceStart: Number(provider.priceStart) || 0,
     priceStartFormatted: `${(Number(provider.priceStart) || 0).toLocaleString('ar-IQ')} د.ع`,
   };
