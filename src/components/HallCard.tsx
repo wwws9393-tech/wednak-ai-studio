@@ -1,5 +1,5 @@
 import React from 'react';
-import { Heart, Star, Users, MapPin, Sparkles, ArrowLeft, ShieldCheck, Gem } from 'lucide-react';
+import { Heart, Star, Users, MapPin, Sparkles, ArrowLeft, ShieldCheck } from 'lucide-react';
 import { Hall, UserProfile } from '../types';
 import { formatAreaWithCity } from '../lib/location';
 
@@ -67,8 +67,7 @@ export const HallCard: React.FC<HallCardProps> = ({
         </span>
 
         <div className="absolute bottom-3 right-3 left-3 flex items-center justify-between text-white text-xs">
-          <div className="wednak-location-neon relative flex items-center gap-1 overflow-hidden bg-black/55 backdrop-blur-xs px-2 py-1.5 rounded-xl">
-            <span className="wednak-location-orbit" aria-hidden="true"><span className="wednak-location-ring"><Gem /></span></span>
+          <div className="flex items-center gap-1 bg-black/55 backdrop-blur-xs px-2 py-1.5 rounded-xl">
             <MapPin className="w-3.5 h-3.5 text-amber-300" />
             <span className="font-semibold">{formatAreaWithCity(hall.location, hall.city)}</span>
           </div>

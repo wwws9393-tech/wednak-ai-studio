@@ -218,13 +218,13 @@ button, a, input, select, textarea, [role="button"] { touch-action: manipulation
   .wednak-auth-back:hover, .wednak-auth-back:active { transform: none; }
 }
 
-/* Premium hall-location treatment shared by hall cards, owner pages and visitor details. */
+/* Premium hall-map treatment. Kept off hall cards so their original design stays intact. */
 .wednak-location-neon {
-  border: 1px solid rgb(34 211 238 / .82) !important;
+  border: 1px solid rgb(8 145 178 / .9) !important;
   box-shadow:
-    0 0 0 1px rgb(103 232 249 / .16),
-    0 0 13px rgb(34 211 238 / .28),
-    inset 0 0 12px rgb(34 211 238 / .09);
+    0 0 0 1px rgb(14 116 144 / .18),
+    0 0 12px rgb(8 145 178 / .24),
+    inset 0 0 10px rgb(14 116 144 / .08);
 }
 
 .wednak-location-neon::after {
@@ -234,7 +234,7 @@ button, a, input, select, textarea, [role="button"] { touch-action: manipulation
   z-index: 15;
   pointer-events: none;
   border-radius: inherit;
-  box-shadow: inset 0 0 0 1px rgb(207 250 254 / .34);
+  box-shadow: inset 0 0 0 1px rgb(103 232 249 / .22);
 }
 
 .wednak-location-orbit {
@@ -252,11 +252,11 @@ button, a, input, select, textarea, [role="button"] { touch-action: manipulation
   width: 18px;
   height: 18px;
   place-items: center;
-  border: 1px solid rgb(236 254 255 / .95);
+  border: 1px solid rgb(165 243 252 / .9);
   border-radius: 999px;
-  color: #67e8f9;
-  background: rgb(6 78 59 / .9);
-  box-shadow: 0 0 8px rgb(34 211 238 / .9), 0 0 14px rgb(34 211 238 / .55);
+  color: #0e7490;
+  background: rgb(236 254 255 / .92);
+  box-shadow: 0 0 7px rgb(8 145 178 / .7), 0 0 12px rgb(14 116 144 / .35);
   animation: wednak-location-ring-orbit 7s linear infinite;
 }
 

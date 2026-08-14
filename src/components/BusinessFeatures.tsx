@@ -1,22 +1,20 @@
 import React, { useMemo, useState } from 'react';
-import { Check, Plus, Sparkles, X } from 'lucide-react';
+import { Check, Plus, X } from 'lucide-react';
+import { WednakLogo } from './WednakLogo';
 
 export const HALL_FEATURE_OPTIONS = [
-  'قاعة مكيفة بالكامل',
   'موقف سيارات',
-  'كوشة وتجهيز مسرح',
-  'نظام صوت وإضاءة',
-  'مولد كهرباء احتياطي',
-  'غرف تبديل للعروسين',
-  'مدخل خاص للعروس',
-  'خدمة ضيافة',
-  'بوفيه وطاولات',
-  'تصوير داخلي',
-  'حديقة خارجية',
-  'مصعد ومدخل لذوي الإعاقة',
-  'حراسة وتنظيم',
-  'قاعة نسائية منفصلة',
-  'إنترنت Wi-Fi',
+  'تجهيز بوفيه',
+  'كوشة',
+  'طاولات وكراسي',
+  'تكييف',
+  'مولدة كهرباء',
+  'غرفة للعروس',
+  'نظام صوت',
+  'إضاءة',
+  'خدمة تنظيف',
+  'حراسة',
+  'مدخل لذوي الإعاقة',
 ] as const;
 
 export const PROVIDER_FEATURE_OPTIONS = [
@@ -64,7 +62,7 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({ value = [], on
 
   return <section className="rounded-3xl border border-emerald-200 bg-gradient-to-br from-emerald-50/80 via-white to-amber-50/70 p-4 shadow-sm" dir="rtl">
     <div className="mb-3 flex items-start gap-2">
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-emerald-800 text-amber-300"><Sparkles className="h-4 w-4" /></span>
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-emerald-800"><WednakLogo className="h-7 w-7" /></span>
       <div><h3 className="text-sm font-black text-emerald-950">المميزات المشمولة</h3><p className="text-[10px] leading-5 text-gray-500">حدد كل ما يحصل عليه الزبون ضمن الحجز. تظهر المميزات بنفس هذا الترتيب في الصفحة العامة.</p></div>
     </div>
     <div className="flex flex-wrap gap-2">
@@ -84,7 +82,7 @@ export const FeaturesDisplay: React.FC<{ features?: string[]; title?: string }> 
   const cleanFeatures = features.map((item) => item.trim()).filter(Boolean);
   if (cleanFeatures.length === 0) return null;
   return <section className="overflow-hidden rounded-3xl border border-emerald-100 bg-gradient-to-br from-white via-emerald-50/45 to-amber-50/40 shadow-sm" dir="rtl">
-    <header className="flex items-center gap-2 border-b border-emerald-100 bg-emerald-950 px-4 py-3 text-white"><Sparkles className="h-4 w-4 text-amber-300" /><h3 className="text-sm font-black">{title}</h3><span className="mr-auto rounded-full bg-white/10 px-2 py-1 text-[10px]">{cleanFeatures.length}</span></header>
+    <header className="flex items-center gap-2 border-b border-emerald-100 bg-emerald-950 px-4 py-3 text-white"><WednakLogo className="h-6 w-6" /><h3 className="text-sm font-black">{title}</h3><span className="mr-auto rounded-full bg-white/10 px-2 py-1 text-[10px]">{cleanFeatures.length}</span></header>
     <div className="grid grid-cols-1 gap-2 p-4 sm:grid-cols-2">
       {cleanFeatures.map((feature, index) => <div key={`${feature}-${index}`} className="flex min-h-12 items-center gap-2 rounded-2xl border border-emerald-100 bg-white px-3 py-2.5 text-xs font-bold text-emerald-950 shadow-[0_5px_16px_rgba(6,95,70,0.04)]"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-emerald-100 text-emerald-800"><Check className="h-3.5 w-3.5" /></span><span>{feature}</span></div>)}
     </div>
