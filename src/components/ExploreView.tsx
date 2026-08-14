@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
-import { Compass, Sparkles, Filter, Building2, Camera, MapPin } from 'lucide-react';
-import { FeedPost, Hall, ServiceProvider, UserProfile } from '../types';
+import { Compass, Sparkles, Filter, Building2, Camera, MapPin, Tag } from 'lucide-react';
+import { BusinessOffer, FeedPost, Hall, ServiceProvider, UserProfile } from '../types';
 import { PostCard } from './PostCard';
 import { HallCard } from './HallCard';
 import { ServiceProviderCard } from './ServiceProviderCard';
 import { MediaViewer } from './MediaViewer';
 import { formatAreaWithCity } from '../lib/location';
+import { OfferCard, OfferDetailsModal } from './OfferCard';
+import { getIraqTodayDate } from '../lib/firebase';
 
 interface ExploreViewProps {
   posts: FeedPost[];
+  offers?: BusinessOffer[];
   halls: Hall[];
   serviceProviders: ServiceProvider[];
   likedPostIds: string[];
@@ -27,6 +30,7 @@ interface ExploreViewProps {
 
 export const ExploreView: React.FC<ExploreViewProps> = ({
   posts = [],
+  offers = [],
   halls = [],
   serviceProviders = [],
   likedPostIds = [],
@@ -44,6 +48,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
 }) => {
   const [filterType, setFilterType] = useState<'all' | 'posts' | 'halls' | 'providers'>('all');
   const [viewingPost, setViewingPost] = useState<FeedPost | null>(null);
+  const [viewingOffer, setViewingOffer] = useState<BusinessOffer | null>(null);
 
   const filteredPosts = posts.filter(
     (p) => selectedCity === 'جميع المحافظات' || p.city === selectedCity
@@ -56,6 +61,20 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   const filteredProviders = serviceProviders.filter(
     (p) => selectedCity === 'جميع المحافظات' || p.city === selectedCity
   );
+
+  const today = getIraqTodayDate();
+  const filteredOffers = offers.filter((offer) => {
+    if (offer.isActive === false || offer.endDate < today) return false;
+    const target = offer.ownerType === 'صاحب قاعة' ? halls.find((hall) => hall.id === offer.targetId) : serviceProviders.find((provider) => provider.id === offer.targetId);
+    return !!target && (selectedCity === 'جميع المحافظات' || target.city === selectedCity);
+  });
+  const offerOwner = (offer: BusinessOffer) => offer.ownerType === 'صاحب قاعة' ? halls.find((hall) => hall.id === offer.targetId) : serviceProviders.find((provider) => provider.id === offer.targetId);
+  const openOfferOwner = (offer: BusinessOffer) => {
+    const target = offerOwner(offer);
+    setViewingOffer(null);
+    if (!target) return;
+    if (offer.ownerType === 'صاحب قاعة') onSelectHall(target as Hall); else onSelectProvider(target as ServiceProvider);
+  };
 
   const postLocationLabel = (post: FeedPost) => {
     if (post.targetType !== 'hall') return post.city;
@@ -138,7 +157,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
           id="explore-filter-posts"
         >
           <Sparkles className="w-3.5 h-3.5" />
-          المنشورات والعروض ({filteredPosts.length})
+          المنشورات والعروض ({filteredPosts.length + filteredOffers.length})
         </button>
 
         <button
@@ -170,6 +189,20 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
 
       {/* Main Grid Feed */}
       <div className="space-y-8">
+
+        {(filterType === 'all' || filterType === 'posts') && filteredOffers.length > 0 && (
+          <div>
+            <h2 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2"><Tag className="w-5 h-5 text-amber-600"/>العروض الحالية</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {filteredOffers.map((offer) => {
+                const target = offerOwner(offer);
+                const name = target?.name || 'صفحة ويدنك';
+                const image = offer.ownerType === 'صاحب قاعة' ? ((target as Hall | undefined)?.profileImageUrl || (target as Hall | undefined)?.coverImage || '') : ((target as ServiceProvider | undefined)?.avatar || (target as ServiceProvider | undefined)?.coverImage || '');
+                return <OfferCard key={offer.id} offer={offer} ownerName={name} ownerImage={image} onOpen={() => setViewingOffer(offer)}/>;
+              })}
+            </div>
+          </div>
+        )}
         
         {/* Posts Feed */}
         {(filterType === 'all' || filterType === 'posts') && filteredPosts.length > 0 && (
@@ -197,6 +230,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                       if (sp) onBookProvider(sp);
                     }
                   }}
+                  exploreStyle
                 />
               ))}
             </div>
@@ -220,6 +254,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                   onSelectHall={onSelectHall}
                   onBookHall={onBookHall}
                   currentUser={currentUser}
+                  exploreStyle
                 />
               ))}
             </div>
@@ -243,6 +278,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                   onSelectProvider={onSelectProvider}
                   onBookProvider={onBookProvider}
                   currentUser={currentUser}
+                  exploreStyle
                 />
               ))}
             </div>
@@ -272,6 +308,13 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
           onNext={siblingPosts.length > 1 ? () => showSibling(1) : undefined}
         />
       )}
+
+      {viewingOffer && (() => {
+        const target = offerOwner(viewingOffer);
+        const name = target?.name || 'صفحة ويدنك';
+        const image = viewingOffer.ownerType === 'صاحب قاعة' ? ((target as Hall | undefined)?.profileImageUrl || (target as Hall | undefined)?.coverImage || '') : ((target as ServiceProvider | undefined)?.avatar || (target as ServiceProvider | undefined)?.coverImage || '');
+        return <OfferDetailsModal offer={viewingOffer} ownerName={name} ownerImage={image} onClose={() => setViewingOffer(null)} onOpenOwner={() => openOfferOwner(viewingOffer)}/>;
+      })()}
 
     </div>
   );

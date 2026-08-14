@@ -66,6 +66,22 @@ export interface FeedPost {
   city: string;
 }
 
+export interface BusinessOffer {
+  id: string;
+  ownerId: string;
+  ownerType: 'صاحب قاعة' | 'مزود خدمة';
+  targetId: string;
+  title: string;
+  description: string;
+  originalPrice: number;
+  offerPrice: number;
+  startDate: string;
+  endDate: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export type BookingStatus = 'قيد المراجعة' | 'مقبول' | 'مرفوض' | 'ملغي' | 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'completed';
 
 export interface Booking {

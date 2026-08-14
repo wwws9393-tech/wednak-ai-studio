@@ -9,6 +9,7 @@ interface ServiceProviderCardProps {
   onSelectProvider: (provider: ServiceProvider) => void;
   onBookProvider: (provider: ServiceProvider) => void;
   currentUser?: UserProfile;
+  exploreStyle?: boolean;
 }
 
 export const ServiceProviderCard: React.FC<ServiceProviderCardProps> = ({
@@ -18,12 +19,13 @@ export const ServiceProviderCard: React.FC<ServiceProviderCardProps> = ({
   onSelectProvider,
   onBookProvider,
   currentUser,
+  exploreStyle = false,
 }) => {
   const isSelfProvider = currentUser && (currentUser.id === provider.ownerId || currentUser.ownedProviderId === provider.id);
 
   return (
     <div 
-      className="bg-white rounded-2xl border border-gray-200/80 hover:border-emerald-200 shadow-2xs hover:shadow-md transition-all duration-200 overflow-hidden group flex flex-col justify-between"
+      className={`bg-white rounded-2xl border hover:border-emerald-200 shadow-2xs hover:shadow-md transition-all duration-200 overflow-hidden group flex flex-col justify-between ${exploreStyle ? 'border-lime-200/90 ring-1 ring-emerald-800/10 shadow-[0_10px_30px_rgba(6,95,70,0.08)]' : 'border-gray-200/80'}`}
       id={`provider-card-${provider.id}`}
     >
       {/* Cover & Avatar Header */}

@@ -1,17 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Camera, CheckCircle2, Clock, Sparkles, Save, AlertCircle, Tag, Image as ImageIcon, Upload, Trash2, Video } from 'lucide-react';
-import { ServiceProvider, Booking, UserProfile, FeedPost, ServiceCategory } from '../types';
-import { createBusinessOffer, saveOwnedServiceProvider } from '../lib/business';
+import { ServiceProvider, Booking, UserProfile, FeedPost, ServiceCategory, BusinessOffer } from '../types';
+import { saveOwnedServiceProvider } from '../lib/business';
 import { uploadOwnerMedia } from '../lib/storage';
 import { CroppedImageInput } from './CroppedImageInput';
 import { MediaViewer } from './MediaViewer';
 import { BookingStatusSummaryDialog } from './BookingStatusSummaryDialog';
+import { BusinessOffersPanel } from './BusinessOffersPanel';
 
 interface ServiceProviderHomeViewProps {
   currentUser: UserProfile;
   serviceProviders: ServiceProvider[];
   bookings: Booking[];
   posts?: FeedPost[];
+  offers?: BusinessOffer[];
   onUpdateProvider?: (updatedProvider: ServiceProvider) => void;
   onUpdateServiceProvider?: (updatedProvider: ServiceProvider) => void;
   onOpenBookings: (filter: 'قيد المراجعة' | 'مقبول') => void;
@@ -36,7 +38,7 @@ const FieldLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 );
 
 export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (props) => {
-  const { currentUser, serviceProviders, bookings, posts = [], onOpenBookings, onCreatePost, onDeletePost, onUpdatePostDescription } = props;
+  const { currentUser, serviceProviders, bookings, posts = [], offers = [], onOpenBookings, onCreatePost, onDeletePost, onUpdatePostDescription } = props;
   const notifyUpdated = props.onUpdateProvider || props.onUpdateServiceProvider || (() => undefined);
   const persistedProvider = useMemo(
     () => serviceProviders.find((provider) => provider.ownerId === currentUser.id || (!!currentUser.ownedProviderId && provider.id === currentUser.ownedProviderId)),
@@ -55,11 +57,6 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
   const [postCaption, setPostCaption] = useState('');
   const [postMediaUrl, setPostMediaUrl] = useState('');
   const [postMediaType, setPostMediaType] = useState<'image' | 'video'>('image');
-  const [offerTitle, setOfferTitle] = useState('');
-  const [offerDescription, setOfferDescription] = useState('');
-  const [offerPrice, setOfferPrice] = useState(0);
-  const [offerStart, setOfferStart] = useState('');
-  const [offerEnd, setOfferEnd] = useState('');
   const [bookingDialog, setBookingDialog] = useState<'accepted' | 'pending' | null>(null);
 
   useEffect(() => {
@@ -143,17 +140,6 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
     } catch (err) { setError(err instanceof Error ? err.message : 'تعذر النشر.'); }
   };
 
-  const publishOffer = async (event: React.FormEvent) => {
-    event.preventDefault(); setError('');
-    const active = persistedProvider || (draft.id ? draft : null);
-    if (!active) return setError('احفظ صفحة الخدمة أولاً قبل إنشاء العرض.');
-    if (!offerStart || !offerEnd) return setError('حدد بداية العرض ونهايته.');
-    try {
-      await createBusinessOffer({ ownerType: 'مزود خدمة', targetId: active.id, title: offerTitle, description: offerDescription, originalPrice: active.priceStart, offerPrice, startDate: offerStart, endDate: offerEnd });
-      setOfferTitle(''); setOfferDescription(''); setOfferPrice(0); setOfferStart(''); setOfferEnd(''); setMessage('تم إنشاء العرض بنجاح.');
-    } catch (err) { setError(err instanceof Error ? err.message : 'تعذر إنشاء العرض.'); }
-  };
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 dir-rtl" id="service-provider-home-dashboard">
       <div className="bg-gradient-to-r from-emerald-950 via-amber-900 to-emerald-950 p-6 rounded-3xl text-white shadow-xl">
@@ -205,7 +191,7 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <form onSubmit={publishPost} className="bg-white p-5 rounded-3xl border space-y-3"><h2 className="font-bold flex gap-2"><Sparkles className="w-5 h-5 text-amber-600"/>نشر أعمالك في Explore</h2><input value={postTitle} onChange={(e)=>setPostTitle(e.target.value)} placeholder="عنوان المنشور" className="w-full px-3 py-2 border rounded-xl text-xs"/><textarea value={postCaption} onChange={(e)=>setPostCaption(e.target.value)} placeholder="الوصف" className="w-full px-3 py-2 border rounded-xl text-xs"/><label className="flex items-center justify-center gap-2 border border-dashed rounded-xl p-3 text-xs font-bold cursor-pointer bg-gray-50"><Upload className="w-4 h-4"/>اختيار صورة أو فيديو<input type="file" accept="image/*,video/*" className="hidden" onChange={(e)=>{const f=e.target.files?.[0]; if(f) void uploadSingle(f,'post');}}/></label>{postMediaUrl && <div className="h-36 rounded-xl overflow-hidden bg-gray-100">{postMediaType === 'video' ? <video src={postMediaUrl} controls className="w-full h-full object-cover"/> : <img src={postMediaUrl} className="w-full h-full object-cover" alt="المنشور"/>}</div>}<button disabled={isUploading} className="px-4 py-2 bg-amber-600 disabled:bg-gray-400 text-white rounded-xl text-xs font-bold">نشر</button></form>
-        <form onSubmit={publishOffer} className="bg-white p-5 rounded-3xl border space-y-3"><h2 className="font-bold flex gap-2"><Tag className="w-5 h-5 text-emerald-700"/>إنشاء عرض</h2><input value={offerTitle} onChange={(e)=>setOfferTitle(e.target.value)} placeholder="عنوان العرض" className="w-full px-3 py-2 border rounded-xl text-xs"/><textarea value={offerDescription} onChange={(e)=>setOfferDescription(e.target.value)} placeholder="تفاصيل العرض" className="w-full px-3 py-2 border rounded-xl text-xs"/><div className="grid grid-cols-3 gap-2"><input type="number" value={offerPrice || ''} onChange={(e)=>setOfferPrice(Number(e.target.value))} placeholder="سعر العرض" className="px-2 py-2 border rounded-xl text-xs"/><input type="date" value={offerStart} onChange={(e)=>setOfferStart(e.target.value)} className="px-2 py-2 border rounded-xl text-xs"/><input type="date" value={offerEnd} onChange={(e)=>setOfferEnd(e.target.value)} className="px-2 py-2 border rounded-xl text-xs"/></div><button className="px-4 py-2 bg-emerald-700 text-white rounded-xl text-xs font-bold">حفظ العرض</button></form>
+        <BusinessOffersPanel ownerId={currentUser.id} ownerType="مزود خدمة" targetId={(persistedProvider || (draft.id ? draft : null))?.id} originalPrice={(persistedProvider || draft).priceStart || 0} offers={offers} onMessage={setMessage} onError={setError}/>
       </div>
 
       {unifiedWorks.length>0&&<section className="bg-white p-5 rounded-3xl border space-y-3"><h2 className="font-bold flex gap-2"><Sparkles className="w-5 h-5 text-amber-600"/>معرض أعمالي ومنشوراتي في Explore ({unifiedWorks.length})</h2><div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">{unifiedWorks.map((work,index)=><button type="button" key={`${work.kind}-${work.url}-${index}`} onClick={()=>work.kind==='post'?setViewingPost(work.post):setViewingPortfolioUrl(work.url)} className="border rounded-2xl overflow-hidden bg-gray-50 text-right"><div className="aspect-square bg-gray-100">{work.type==='video'?<video src={work.url} muted className="w-full h-full object-cover"/>:<img src={work.url} className="w-full h-full object-cover"/>}</div><div className="p-3"><b className="text-xs block">{work.title}</b><p className="text-[11px] text-gray-500 line-clamp-2 mt-1">{work.description||'بدون وصف'}</p></div></button>)}</div></section>}

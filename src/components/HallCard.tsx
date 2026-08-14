@@ -10,6 +10,7 @@ interface HallCardProps {
   onSelectHall: (hall: Hall) => void;
   onBookHall: (hall: Hall) => void;
   currentUser?: UserProfile;
+  exploreStyle?: boolean;
 }
 
 const FALLBACK_HALL_IMAGE = 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=800&q=80';
@@ -21,6 +22,7 @@ export const HallCard: React.FC<HallCardProps> = ({
   onSelectHall,
   onBookHall,
   currentUser,
+  exploreStyle = false,
 }) => {
   const isSelfHall = currentUser && (currentUser.id === hall.ownerId || currentUser.ownedHallId === hall.id);
   const hallImages = Array.isArray(hall.images) ? hall.images.filter(Boolean) : [];
@@ -30,7 +32,7 @@ export const HallCard: React.FC<HallCardProps> = ({
 
   return (
     <div
-      className="bg-white rounded-2xl border border-amber-100/80 shadow-xs hover:shadow-md transition-all duration-200 overflow-hidden group flex flex-col justify-between"
+      className={`bg-white rounded-2xl border shadow-xs hover:shadow-md transition-all duration-200 overflow-hidden group flex flex-col justify-between ${exploreStyle ? 'border-lime-200/90 ring-1 ring-emerald-800/10 shadow-[0_10px_30px_rgba(6,95,70,0.08)]' : 'border-amber-100/80'}`}
       id={`hall-card-${hall.id}`}
     >
       <div className="relative h-48 sm:h-52 w-full overflow-hidden bg-gray-100 cursor-pointer" onClick={() => onSelectHall(hall)}>

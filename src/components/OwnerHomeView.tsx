@@ -1,19 +1,21 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Building2, CheckCircle2, Clock, Sparkles, Save, AlertCircle, Tag, Image as ImageIcon, Upload, Trash2 } from 'lucide-react';
-import { Hall, Booking, UserProfile, FeedPost } from '../types';
-import { createBusinessOffer, saveOwnedHall } from '../lib/business';
+import { Hall, Booking, UserProfile, FeedPost, BusinessOffer } from '../types';
+import { saveOwnedHall } from '../lib/business';
 import { uploadOwnerImage, uploadOwnerMedia } from '../lib/storage';
 import { MediaViewer } from './MediaViewer';
 import { CroppedImageInput } from './CroppedImageInput';
 import { Coordinates, HallMap } from './HallMap';
 import { BookingStatusSummaryDialog } from './BookingStatusSummaryDialog';
 import { formatAreaWithCity } from '../lib/location';
+import { BusinessOffersPanel } from './BusinessOffersPanel';
 
 interface OwnerHomeViewProps {
   currentUser: UserProfile;
   halls: Hall[];
   bookings: Booking[];
   posts?: FeedPost[];
+  offers?: BusinessOffer[];
   onUpdateHall: (updatedHall: Hall) => void;
   onOpenBookings: (filter: 'قيد المراجعة' | 'مقبول') => void;
   onCreatePost: (post: Omit<FeedPost, 'id' | 'createdAt' | 'likesCount' | 'sharesCount'>) => Promise<void> | void;
@@ -32,7 +34,7 @@ const FieldLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <label className="text-[11px] font-bold text-gray-700 block mb-1">{children}</label>
 );
 
-export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({ currentUser, halls, bookings, posts = [], onUpdateHall, onOpenBookings, onCreatePost, onDeletePost, onUpdatePostDescription }) => {
+export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({ currentUser, halls, bookings, posts = [], offers = [], onUpdateHall, onOpenBookings, onCreatePost, onDeletePost, onUpdatePostDescription }) => {
   const persistedHall = useMemo(
     () => halls.find((hall) => hall.ownerId === currentUser.id || (!!currentUser.ownedHallId && hall.id === currentUser.ownedHallId)),
     [halls, currentUser.id, currentUser.ownedHallId]
@@ -48,11 +50,6 @@ export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({ currentUser, halls
   const [postMediaUrl, setPostMediaUrl] = useState('');
   const [postMediaType,setPostMediaType]=useState<'image'|'video'>('image');
   const [viewingPost,setViewingPost]=useState<FeedPost|null>(null);
-  const [offerTitle, setOfferTitle] = useState('');
-  const [offerDescription, setOfferDescription] = useState('');
-  const [offerPrice, setOfferPrice] = useState(0);
-  const [offerStart, setOfferStart] = useState('');
-  const [offerEnd, setOfferEnd] = useState('');
   const [bookingDialog, setBookingDialog] = useState<'accepted' | 'pending' | null>(null);
 
   useEffect(() => { if (persistedHall) { setDraft(persistedHall); setIsEditing(false); } }, [persistedHall]);
@@ -118,17 +115,6 @@ export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({ currentUser, halls
     } catch (err) { setError(err instanceof Error ? err.message : 'تعذر النشر.'); }
   };
 
-  const publishOffer = async (event: React.FormEvent) => {
-    event.preventDefault(); setError('');
-    const hall = persistedHall || (draft.id ? draft : null);
-    if (!hall) return setError('احفظ صفحة القاعة أولاً قبل إنشاء العرض.');
-    if (!offerStart || !offerEnd) return setError('حدد تاريخ بداية العرض ونهايته.');
-    try {
-      await createBusinessOffer({ ownerType: 'صاحب قاعة', targetId: hall.id, title: offerTitle, description: offerDescription, originalPrice: hall.price, offerPrice, startDate: offerStart, endDate: offerEnd });
-      setOfferTitle(''); setOfferDescription(''); setOfferPrice(0); setOfferStart(''); setOfferEnd(''); setMessage('تم إنشاء العرض بنجاح.');
-    } catch (err) { setError(err instanceof Error ? err.message : 'تعذر إنشاء العرض.'); }
-  };
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 dir-rtl" id="owner-home-dashboard">
       <div className="bg-gradient-to-r from-emerald-950 via-emerald-900 to-amber-950 p-6 rounded-3xl text-white shadow-xl">
@@ -160,7 +146,7 @@ export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({ currentUser, halls
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <form onSubmit={publishPost} className="bg-white p-5 rounded-3xl border space-y-3"><h2 className="font-bold flex gap-2"><Sparkles className="w-5 h-5 text-amber-600"/>معرض الأعمال ومنشورات Explore</h2><div><FieldLabel>عنوان العمل</FieldLabel><input value={postTitle} onChange={(e)=>setPostTitle(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs"/></div><div><FieldLabel>الوصف (اختياري)</FieldLabel><textarea value={postCaption} onChange={(e)=>setPostCaption(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs"/></div><div><FieldLabel>صورة أو فيديو</FieldLabel><CroppedImageInput label="اختيار صورة وضبط حجمها" aspect={1} onReady={(f)=>void uploadImage(f,'post')}/><label className="mt-2 flex items-center justify-center gap-2 border border-dashed rounded-xl p-3 text-xs font-bold cursor-pointer bg-gray-50"><Upload className="w-4 h-4"/>أو اختيار فيديو<input type="file" accept="video/*" className="hidden" onChange={(e)=>{const f=e.target.files?.[0];e.currentTarget.value='';if(f)void uploadImage(f,'postVideo')}}/></label>{postMediaUrl&&(postMediaType==='video'?<video src={postMediaUrl} controls className="mt-2 h-28 w-full object-cover rounded-xl"/>:<img src={postMediaUrl} alt="العمل" className="mt-2 h-28 w-full object-cover rounded-xl"/>)}</div><button disabled={isUploading} className="px-4 py-2 bg-amber-600 disabled:bg-gray-400 text-white rounded-xl text-xs font-bold">إضافة وحفظ ونشر</button></form>
-        <form onSubmit={publishOffer} className="bg-white p-5 rounded-3xl border space-y-3"><h2 className="font-bold flex gap-2"><Tag className="w-5 h-5 text-emerald-700"/>إنشاء عرض</h2><div><FieldLabel>عنوان العرض</FieldLabel><input value={offerTitle} onChange={(e)=>setOfferTitle(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs" required/></div><div><FieldLabel>تفاصيل العرض</FieldLabel><textarea value={offerDescription} onChange={(e)=>setOfferDescription(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs"/></div><div className="grid grid-cols-1 sm:grid-cols-3 gap-2"><div><FieldLabel>سعر العرض (د.ع)</FieldLabel><input type="number" min="0" value={offerPrice||''} onChange={(e)=>setOfferPrice(Number(e.target.value))} className="w-full px-2 py-2 border rounded-xl text-xs" required/></div><div><FieldLabel>بداية العرض</FieldLabel><input type="date" value={offerStart} onChange={(e)=>setOfferStart(e.target.value)} className="w-full px-2 py-2 border rounded-xl text-xs" required/></div><div><FieldLabel>نهاية العرض</FieldLabel><input type="date" value={offerEnd} onChange={(e)=>setOfferEnd(e.target.value)} className="w-full px-2 py-2 border rounded-xl text-xs" required/></div></div><button className="px-4 py-2 bg-emerald-700 text-white rounded-xl text-xs font-bold">حفظ العرض</button></form>
+        <BusinessOffersPanel ownerId={currentUser.id} ownerType="صاحب قاعة" targetId={(persistedHall || (draft.id ? draft : null))?.id} originalPrice={(persistedHall || draft).price || 0} offers={offers} onMessage={setMessage} onError={setError}/>
       </div>
 
       {ownPosts.length > 0 && <section className="bg-white p-5 rounded-3xl border space-y-3"><h2 className="font-bold">معرض أعمالي ({ownPosts.length})</h2><div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">{ownPosts.map(post=><button key={post.id} onClick={()=>setViewingPost(post)} className="border rounded-2xl overflow-hidden text-right hover:shadow-lg transition"><div className="h-40 bg-gray-100">{post.mediaType==='video'?<video src={post.mediaUrl} muted className="w-full h-full object-cover"/>:<img src={post.mediaUrl} className="w-full h-full object-cover"/>}</div><div className="p-3"><b className="text-xs">{post.title}</b><p className="text-[11px] text-gray-500 line-clamp-2">{post.caption||'بدون وصف'}</p></div></button>)}</div></section>}

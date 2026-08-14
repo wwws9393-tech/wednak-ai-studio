@@ -10,6 +10,7 @@ interface PostCardProps {
   onOpenMedia: (post: FeedPost) => void;
   onOpenTarget: (post: FeedPost) => void;
   onBookTarget: (post: FeedPost) => void;
+  exploreStyle?: boolean;
 }
 
 export const PostCard: React.FC<PostCardProps> = ({
@@ -20,6 +21,7 @@ export const PostCard: React.FC<PostCardProps> = ({
   onOpenMedia,
   onOpenTarget,
   onBookTarget,
+  exploreStyle = false,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -30,7 +32,7 @@ export const PostCard: React.FC<PostCardProps> = ({
 
   return (
     <div 
-      className="bg-white rounded-2xl border border-gray-200/90 shadow-2xs hover:shadow-md transition-all overflow-hidden"
+      className={`bg-white rounded-2xl border shadow-2xs hover:shadow-md transition-all overflow-hidden ${exploreStyle ? 'border-lime-200/90 ring-1 ring-emerald-800/10 shadow-[0_10px_30px_rgba(6,95,70,0.08)]' : 'border-gray-200/90'}`}
       id={`post-card-${post.id}`}
     >
       {/* Header: Author Info */}

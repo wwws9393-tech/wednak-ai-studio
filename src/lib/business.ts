@@ -1,6 +1,6 @@
-import { collection, doc, setDoc } from 'firebase/firestore';
+import { collection, deleteDoc, doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { Hall, ServiceProvider } from '../types';
+import { BusinessOffer, Hall, ServiceProvider } from '../types';
 
 async function requireUid(): Promise<string> {
   const uid = auth.currentUser?.uid;
@@ -83,4 +83,37 @@ export async function createBusinessOffer(input: BusinessOfferInput): Promise<st
     updatedAt: new Date().toISOString(),
   });
   return offerRef.id;
+}
+
+export function subscribeBusinessOffers(callback: (offers: BusinessOffer[]) => void): () => void {
+  return onSnapshot(collection(db, 'offers'), (snapshot) => {
+    const offers = snapshot.docs.map((item) => ({ ...item.data(), id: item.id } as BusinessOffer));
+    offers.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    callback(offers);
+  }, (error) => {
+    console.error('Offers subscription failed:', error);
+    callback([]);
+  });
+}
+
+export async function updateBusinessOffer(offer: BusinessOffer): Promise<void> {
+  const uid = await requireUid();
+  if (!offer.id || offer.ownerId !== uid) throw new Error('لا يمكنك تعديل هذا العرض.');
+  if (!offer.title.trim()) throw new Error('عنوان العرض مطلوب.');
+  if (!offer.startDate || !offer.endDate || offer.endDate < offer.startDate) throw new Error('تواريخ العرض غير صحيحة.');
+  await updateDoc(doc(db, 'offers', offer.id), {
+    title: offer.title.trim(),
+    description: offer.description.trim(),
+    offerPrice: Number(offer.offerPrice) || 0,
+    startDate: offer.startDate,
+    endDate: offer.endDate,
+    isActive: offer.isActive !== false,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+export async function deleteBusinessOffer(offer: BusinessOffer): Promise<void> {
+  const uid = await requireUid();
+  if (!offer.id || offer.ownerId !== uid) throw new Error('لا يمكنك حذف هذا العرض.');
+  await deleteDoc(doc(db, 'offers', offer.id));
 }

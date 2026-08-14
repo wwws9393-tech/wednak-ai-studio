@@ -60,19 +60,19 @@ export const BookingSchedule: React.FC<{ bookings: Booking[] }> = ({ bookings })
   };
 
   return (
-    <section className="bg-white p-5 rounded-3xl border border-gray-200 space-y-4" dir="rtl">
-      <div className="flex items-center gap-2">
-        <CalendarDays className="w-5 h-5 text-emerald-700" />
-        <h2 className="font-black">المواعيد والأوقات</h2>
+    <section className="bg-gradient-to-br from-white via-lime-50/30 to-amber-50/40 p-5 rounded-3xl border border-amber-300/40 shadow-sm space-y-4" dir="rtl">
+      <div className="flex items-center gap-2 rounded-2xl bg-gradient-to-l from-emerald-950 via-emerald-900 to-emerald-800 px-4 py-3 text-white shadow-md">
+        <CalendarDays className="w-5 h-5 text-amber-300" />
+        <div><h2 className="font-black text-amber-100">المواعيد والأوقات</h2><p className="text-[10px] text-emerald-100">متابعة التوفر والحجوزات من مكان واحد</p></div>
       </div>
       <div className="grid lg:grid-cols-2 gap-4">
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4 space-y-3">
+        <div className="rounded-2xl border border-amber-300/60 bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-800 p-4 space-y-3 shadow-lg">
           <div className="flex justify-between gap-3">
             <div>
-              <b className="text-sm text-emerald-950 block">حالة المواعيد والأوقات</b>
-              <span className="text-[9px] text-gray-500">الأحمر مقبول، البرتقالي قيد المراجعة</span>
+              <b className="text-sm text-amber-100 block">حالة المواعيد والأوقات</b>
+              <span className="text-[9px] text-emerald-100">الأحمر مقبول، البرتقالي قيد المراجعة</span>
             </div>
-            <input type="date" min={today} value={date} onChange={(event) => setDate(event.target.value)} className="border rounded-lg px-2 py-1 text-xs bg-white" />
+            <input type="date" min={today} value={date} onChange={(event) => setDate(event.target.value)} className="border border-amber-300 rounded-xl px-2 py-2 text-xs bg-white text-emerald-950" />
           </div>
           <div className="grid sm:grid-cols-3 gap-2">
             {SLOTS.map((slot) => {
@@ -90,12 +90,12 @@ export const BookingSchedule: React.FC<{ bookings: Booking[] }> = ({ bookings })
             })}
           </div>
         </div>
-        <div className="rounded-2xl border border-rose-200 bg-rose-50/40 p-4 min-h-40 flex flex-col" style={{ touchAction: 'manipulation' }}>
-          <b className="text-sm text-rose-950 flex gap-2"><CalendarCheck2 className="w-4 h-4" />المواعيد والأوقات المحجوزة</b>
+        <div className="rounded-2xl border border-slate-900/40 bg-gradient-to-br from-rose-50 via-white to-rose-100/60 p-4 min-h-40 flex flex-col shadow-[0_12px_28px_rgba(15,23,42,0.10)]" style={{ touchAction: 'manipulation' }}>
+          <b className="text-sm text-rose-950 flex gap-2"><CalendarCheck2 className="w-4 h-4 text-rose-500" />المواعيد والأوقات المحجوزة</b>
           <button
             type="button"
             onClick={() => setShowReservedDetails(true)}
-            className="m-auto min-w-40 px-5 py-2.5 rounded-xl bg-rose-950 text-white text-xs font-black flex items-center justify-center gap-2 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+            className="m-auto min-w-40 px-5 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 border border-slate-900/30 text-white text-xs font-black flex items-center justify-center gap-2 shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
           >
             <Eye className="w-4 h-4" />عرض التفاصيل
           </button>
@@ -117,7 +117,7 @@ export const BookingSchedule: React.FC<{ bookings: Booking[] }> = ({ bookings })
             onClick={(event) => event.stopPropagation()}
             style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }}
           >
-            <div className="shrink-0 bg-rose-950 text-white px-4 py-4 flex items-center justify-between gap-3">
+            <div className="shrink-0 bg-gradient-to-l from-rose-700 via-rose-600 to-rose-500 text-white px-4 py-4 flex items-center justify-between gap-3 border-b border-slate-900/30">
               <div>
                 <h3 id="reserved-bookings-title" className="font-black text-base flex items-center gap-2"><CalendarCheck2 className="w-5 h-5" />المواعيد والأوقات المحجوزة</h3>
                 <p className="text-[10px] text-rose-100 mt-1">مرتبة من أقرب موعد إلى الأبعد</p>

@@ -1,6 +1,19 @@
 @import url('https://fonts.googleapis.com/css2?family=Allura&display=swap');
 @import "tailwindcss";
 
+html, body, #root {
+  width: 100%;
+  max-width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+  touch-action: pan-y;
+  -webkit-text-size-adjust: 100%;
+}
+
+button, a, input, select, textarea, [role="button"] { touch-action: manipulation; }
+.wednak-image-zoom-surface { touch-action: none !important; overscroll-behavior: contain; }
+
 .wednak-logo-stage { position: relative; perspective: 560px; }
 .wednak-logo-stage::after {
   content: "";
