@@ -4,6 +4,7 @@ import { formatAreaWithCity } from '../lib/location';
 import { Hall, UserProfile, Booking, FeedPost, BusinessOffer } from '../types';
 import { getIraqTodayDate, PendingAvailabilityRange, subscribeBookingAvailability } from '../lib/firebase';
 import { MediaViewer } from './MediaViewer';
+import { MediaThumbnail } from './MediaThumbnail';
 import { HallMap } from './HallMap';
 import { FeaturesDisplay } from './BusinessFeatures';
 import { BusinessOffersShowcase } from './BusinessOffersShowcase';
@@ -100,7 +101,7 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4" id="hall-details-modal-overlay">
       <div ref={modalScrollRef} className="bg-white rounded-3xl max-w-3xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-amber-100 my-auto">
         <div className="relative h-72 sm:h-80 w-full bg-black overflow-hidden rounded-t-3xl">
-          <img src={mainImage} alt={hall.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.src = FALLBACK_HALL_IMAGE; }} />
+          <img src={mainImage} alt={hall.name} className="w-full h-full object-cover" decoding="async" onError={(e) => { e.currentTarget.src = FALLBACK_HALL_IMAGE; }} />
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/10" />
           <button onClick={onClose} className="absolute top-4 left-4 z-10 p-2.5 rounded-full bg-black/55 text-white hover:bg-black/80 shadow-md" id="close-hall-modal-btn"><X className="w-5 h-5" /></button>
           <button onClick={() => onToggleFavorite(hall.id, 'hall')} className={`absolute top-4 right-4 z-10 p-2.5 rounded-full backdrop-blur-md shadow-md ${isFavorite ? 'bg-rose-500 text-white' : 'bg-white/90 text-gray-800 hover:text-rose-500'}`} id="favorite-btn-in-hall-modal"><Heart className={`w-5 h-5 ${isFavorite ? 'fill-current' : ''}`} /></button>
@@ -114,7 +115,7 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
           </div>
         </div>
 
-        {galleryImages.length > 1 && <div className="bg-white border-b border-gray-100 px-4 py-3" dir="rtl"><div className="flex items-center gap-2 overflow-x-auto pb-1">{galleryImages.map((img, idx) => <button key={`${img}-${idx}`} type="button" onClick={() => setActiveImageIndex(idx)} className={`relative w-20 h-14 sm:w-24 sm:h-16 rounded-xl overflow-hidden shrink-0 border-2 bg-gray-100 transition-all ${activeImageIndex === idx ? 'border-emerald-600 shadow-sm' : 'border-gray-200 opacity-85 hover:opacity-100'}`} aria-label={`عرض الصورة ${idx + 1}`}><img src={img} alt={`صورة ${idx + 1} من ${hall.name}`} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.src = FALLBACK_HALL_IMAGE; }} />{activeImageIndex === idx && <span className="absolute inset-0 ring-2 ring-inset ring-emerald-600 rounded-lg" />}</button>)}</div></div>}
+        {galleryImages.length > 1 && <div className="bg-white border-b border-gray-100 px-4 py-3" dir="rtl"><div className="flex items-center gap-2 overflow-x-auto pb-1">{galleryImages.map((img, idx) => <button key={`${img}-${idx}`} type="button" onClick={() => setActiveImageIndex(idx)} className={`relative w-20 h-14 sm:w-24 sm:h-16 rounded-xl overflow-hidden shrink-0 border-2 bg-gray-100 transition-all ${activeImageIndex === idx ? 'border-emerald-600 shadow-sm' : 'border-gray-200 opacity-85 hover:opacity-100'}`} aria-label={`عرض الصورة ${idx + 1}`}><img src={img} alt={`صورة ${idx + 1} من ${hall.name}`} className="w-full h-full object-cover" loading="lazy" decoding="async" onError={(e) => { e.currentTarget.src = FALLBACK_HALL_IMAGE; }} />{activeImageIndex === idx && <span className="absolute inset-0 ring-2 ring-inset ring-emerald-600 rounded-lg" />}</button>)}</div></div>}
 
         <div className="p-5 space-y-5" dir="rtl">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -129,7 +130,7 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
 
           <BusinessOffersShowcase offers={offers} targetId={hall.id} ownerName={hall.name} ownerImage={hall.profileImageUrl || hall.coverImage || mainImage} />
 
-          {hallPosts.length > 0 && <div><h3 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2"><Sparkles className="w-4 h-4 text-amber-500"/>معرض أعمال القاعة ({hallPosts.length})</h3><div className="grid grid-cols-2 sm:grid-cols-3 gap-3">{hallPosts.map(post=><button onClick={()=>setViewingPost(post)} key={post.id} className="text-right rounded-2xl overflow-hidden border bg-gray-100 shadow-sm hover:shadow-lg transition"><div className="aspect-square relative">{post.mediaType==='video'?<video src={post.mediaUrl} muted preload="metadata" className="w-full h-full object-cover"/>:<img src={post.mediaUrl} alt={post.title} className="w-full h-full object-cover"/>}<div className="absolute bottom-0 inset-x-0 bg-black/65 text-white p-2"><b className="text-[11px] block">{post.title}</b><span className="text-[9px] line-clamp-1">{post.caption||'بدون وصف'}</span></div></div></button>)}</div></div>}
+          {hallPosts.length > 0 && <div><h3 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2"><Sparkles className="w-4 h-4 text-amber-500"/>معرض أعمال القاعة ({hallPosts.length})</h3><div className="grid grid-cols-2 sm:grid-cols-3 gap-3">{hallPosts.map(post=><button onClick={()=>setViewingPost(post)} key={post.id} className="text-right rounded-2xl overflow-hidden border bg-gray-100 shadow-sm hover:shadow-lg transition"><div className="aspect-square relative"><MediaThumbnail url={post.mediaUrl} type={post.mediaType} thumbnailUrl={post.thumbnailUrl} alt={post.title} fallbackUrl={FALLBACK_HALL_IMAGE} /><div className="absolute bottom-0 inset-x-0 bg-black/65 text-white p-2"><b className="text-[11px] block">{post.title}</b><span className="text-[9px] line-clamp-1">{post.caption||'بدون وصف'}</span></div></div></button>)}</div></div>}
 
           <FeaturesDisplay features={hall.features} title="المميزات المشمولة في الحجز" />
 

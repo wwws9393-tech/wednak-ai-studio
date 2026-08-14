@@ -394,8 +394,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
               <WednakLogo className="h-11 w-11" />
               <span className="rounded-full bg-amber-400 px-3 py-1 text-[10px] font-black text-emerald-950">ويدنك وياكم</span>
             </div>
-            <div className="relative mx-auto mt-3 flex h-24 w-52 items-center justify-center overflow-hidden rounded-[2rem] border border-white/10 bg-white/10 px-4 shadow-inner">
-              <img src={bookingCouple} alt="عروس وعريس" className="h-20 w-auto max-w-full object-contain drop-shadow-lg" />
+            <div className="relative mx-auto mt-3 flex h-24 w-44 items-center justify-center">
+              <img src={bookingCouple} alt="عروس وعريس" className="h-[4.75rem] w-auto max-w-full object-contain drop-shadow-md" />
             </div>
             <CheckCircle className="mx-auto mt-4 h-8 w-8 text-amber-300" />
             <h3 className="mt-2 text-lg font-black text-white">تم إرسال حجزك بنجاح</h3>

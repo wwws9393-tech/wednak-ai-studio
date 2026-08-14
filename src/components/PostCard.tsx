@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Heart, Share2, MapPin, ArrowLeft, CheckCircle, Play } from 'lucide-react';
 import { FeedPost } from '../types';
+import { MediaThumbnail } from './MediaThumbnail';
 
 interface PostCardProps {
   post: FeedPost;
@@ -98,17 +99,18 @@ export const PostCard: React.FC<PostCardProps> = ({
       >
         {post.mediaType === 'video' ? (
           <>
-            <video src={post.mediaUrl} poster={post.thumbnailUrl} muted playsInline preload="metadata" className="w-full h-full object-cover hover:scale-102 transition-transform duration-300" />
+            <MediaThumbnail url={post.mediaUrl} type="video" thumbnailUrl={post.thumbnailUrl} alt={post.title} className="w-full h-full object-cover hover:scale-102 transition-transform duration-300" />
             <span className="absolute inset-0 grid place-items-center pointer-events-none">
               <span className="grid h-14 w-14 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm border border-white/25"><Play className="h-7 w-7 fill-current" /></span>
             </span>
           </>
         ) : (
           <img
-            src={post.mediaUrl}
+            src={post.thumbnailUrl || post.mediaUrl}
             alt={post.title}
             className="w-full h-full object-cover hover:scale-102 transition-transform duration-300"
             loading="lazy"
+            decoding="async"
             onError={(e) => {
               (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1200&q=80';
             }}

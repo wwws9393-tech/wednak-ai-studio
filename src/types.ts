@@ -43,6 +43,7 @@ export interface ServiceProvider {
   portfolio: string[];
   portfolioDescriptions?: Record<string,string>;
   portfolioTitles?: Record<string,string>;
+  portfolioThumbnails?: Record<string,string>;
   features?: string[];
   description: string;
   phone: string;

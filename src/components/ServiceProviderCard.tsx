@@ -35,6 +35,7 @@ export const ServiceProviderCard: React.FC<ServiceProviderCardProps> = ({
           alt={provider.name}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           loading="lazy"
+          decoding="async"
           onError={(e) => {
             (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1537633552985-df8429e8048b?auto=format&fit=crop&w=800&q=80';
           }}
@@ -69,6 +70,8 @@ export const ServiceProviderCard: React.FC<ServiceProviderCardProps> = ({
             src={provider.avatar}
             alt={provider.name}
             className="w-full h-full object-cover"
+            loading="lazy"
+            decoding="async"
             onError={(e) => {
               (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80';
             }}

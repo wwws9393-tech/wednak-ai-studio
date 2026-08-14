@@ -2,9 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Camera, CheckCircle2, Clock, Sparkles, Save, AlertCircle, Tag, Image as ImageIcon, Upload, Trash2, Video } from 'lucide-react';
 import { ServiceProvider, Booking, UserProfile, FeedPost, ServiceCategory, BusinessOffer } from '../types';
 import { saveOwnedServiceProvider } from '../lib/business';
-import { uploadOwnerMedia } from '../lib/storage';
+import { uploadOwnerMedia, uploadOwnerMediaAsset } from '../lib/storage';
 import { CroppedImageInput } from './CroppedImageInput';
 import { MediaViewer } from './MediaViewer';
+import { MediaThumbnail } from './MediaThumbnail';
 import { BookingStatusSummaryDialog } from './BookingStatusSummaryDialog';
 import { BusinessOffersPanel } from './BusinessOffersPanel';
 import { FeatureSelector, FeaturesDisplay } from './BusinessFeatures';
@@ -57,6 +58,7 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
   const [postTitle, setPostTitle] = useState('');
   const [postCaption, setPostCaption] = useState('');
   const [postMediaUrl, setPostMediaUrl] = useState('');
+  const [postThumbnailUrl, setPostThumbnailUrl] = useState('');
   const [postMediaType, setPostMediaType] = useState<'image' | 'video'>('image');
   const [bookingDialog, setBookingDialog] = useState<'accepted' | 'pending' | null>(null);
 
@@ -71,7 +73,10 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
   const pendingBookings = providerBookings.filter((booking) => booking.status === 'قيد المراجعة' || booking.status === 'pending');
   const acceptedBookings = providerBookings.filter((booking) => booking.status === 'مقبول' || booking.status === 'accepted');
   const ownPosts = posts.filter((post) => post.authorId === currentUser.id);
-  const exploreThumbnailByUrl = new Map(ownPosts.map((post) => [post.mediaUrl, post.thumbnailUrl]));
+  const exploreThumbnailByUrl = new Map<string,string | undefined>([
+    ...Object.entries(draft.portfolioThumbnails || {}),
+    ...ownPosts.map((post) => [post.mediaUrl, post.thumbnailUrl] as [string,string | undefined]),
+  ]);
   const unifiedWorks=[...(draft.portfolio||[]).map(url=>({kind:'portfolio' as const,url,type:isVideoUrl(url)?'video' as const:'image' as const,title:draft.portfolioTitles?.[url]||'عمل من المعرض',description:draft.portfolioDescriptions?.[url],thumbnailUrl:exploreThumbnailByUrl.get(url)})),...ownPosts.map(post=>({kind:'post' as const,url:post.mediaUrl,type:post.mediaType,title:post.title,description:post.caption,thumbnailUrl:post.thumbnailUrl,post}))];
   const setField = <K extends keyof ServiceProvider>(key: K, value: ServiceProvider[K]) => setDraft((prev) => ({ ...prev, [key]: value }));
 
@@ -79,16 +84,17 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
     setError(''); setMessage(''); setIsUploading(true);
     try {
       const folder = kind === 'cover' ? 'provider-cover' : kind === 'avatar' ? 'provider-avatar' : kind === 'portfolio' ? 'portfolio' : 'post-media';
-      const url = await uploadOwnerMedia(file, folder);
+      const asset = kind === 'post' || kind === 'portfolio' ? await uploadOwnerMediaAsset(file, folder) : null;
+      const url = asset?.mediaUrl || await uploadOwnerMedia(file, folder);
       if (kind === 'cover') setDraft((prev) => ({ ...prev, coverImage: url }));
       if (kind === 'avatar') setDraft((prev) => ({ ...prev, avatar: url }));
       if (kind === 'portfolio') {
         const description=window.prompt('أضف وصفاً لهذا العمل (اختياري):','')||'';
-        setDraft((prev) => ({ ...prev, portfolio: [...(prev.portfolio || []), url], portfolioDescriptions:{...(prev.portfolioDescriptions||{}),[url]:description} }));
+        setDraft((prev) => ({ ...prev, portfolio: [...(prev.portfolio || []), url], portfolioDescriptions:{...(prev.portfolioDescriptions||{}),[url]:description}, portfolioThumbnails: asset?.thumbnailUrl ? {...(prev.portfolioThumbnails||{}),[url]:asset.thumbnailUrl} : prev.portfolioThumbnails }));
         setPortfolioDirty(true);
         setMessage('تم رفع الملف. اضغط «حفظ معرض الأعمال» لتثبيته في صفحتك.');
       }
-      if (kind === 'post') { setPostMediaUrl(url); setPostMediaType(file.type.startsWith('video/') ? 'video' : 'image'); }
+      if (kind === 'post') { setPostMediaUrl(url); setPostThumbnailUrl(asset?.thumbnailUrl || ''); setPostMediaType(file.type.startsWith('video/') ? 'video' : 'image'); }
     } catch (err) { setError(err instanceof Error ? err.message : 'تعذر رفع الملف.'); }
     finally { setIsUploading(false); }
   };
@@ -137,8 +143,8 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
     if (!postTitle.trim() || !postCaption.trim()) return setError('عنوان المنشور والوصف مطلوبان.');
     if (!postMediaUrl) return setError('اختر صورة أو فيديو للمنشور.');
     try {
-      await onCreatePost({ authorId: currentUser.id, authorName: active.name, authorAvatar: active.avatar || active.coverImage || '', authorRole: 'مزود خدمة', targetType: 'provider', targetId: active.id, title: postTitle.trim(), caption: postCaption.trim(), mediaType: postMediaType, mediaUrl: postMediaUrl, city: active.city });
-      setPostTitle(''); setPostCaption(''); setPostMediaUrl(''); setPostMediaType('image'); setMessage('تم نشر العمل في Explore.');
+      await onCreatePost({ authorId: currentUser.id, authorName: active.name, authorAvatar: active.avatar || active.coverImage || '', authorRole: 'مزود خدمة', targetType: 'provider', targetId: active.id, title: postTitle.trim(), caption: postCaption.trim(), mediaType: postMediaType, mediaUrl: postMediaUrl, thumbnailUrl: postThumbnailUrl || undefined, city: active.city });
+      setPostTitle(''); setPostCaption(''); setPostMediaUrl(''); setPostThumbnailUrl(''); setPostMediaType('image'); setMessage('تم نشر العمل في Explore.');
     } catch (err) { setError(err instanceof Error ? err.message : 'تعذر النشر.'); }
   };
 
@@ -188,7 +194,7 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
       <section className="hidden">
         <div className="flex items-center justify-between"><h2 className="font-bold flex gap-2"><Camera className="w-5 h-5 text-emerald-700"/>معرض الأعمال</h2><span className="text-[11px] text-gray-500">صور وفيديوهات تظهر للزبون داخل صفحتك</span></div>
         <label className="flex items-center justify-center gap-2 border border-dashed rounded-2xl p-4 text-xs font-bold cursor-pointer bg-gray-50"><Upload className="w-4 h-4"/>إضافة صورة أو فيديو من المعرض<input type="file" accept="image/*,video/*" className="hidden" onChange={(e)=>{const f=e.target.files?.[0]; if(f) void uploadSingle(f,'portfolio');}}/></label>
-        {(draft.portfolio || []).length > 0 ? <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">{(draft.portfolio || []).map((url,idx)=><button type="button" onClick={()=>setViewingPortfolioUrl(url)} key={`${url}-${idx}`} className="text-right relative rounded-2xl overflow-hidden bg-gray-100 aspect-square border shadow-sm hover:shadow-lg">{isVideoUrl(url) ? <video src={url} poster={exploreThumbnailByUrl.get(url)} muted playsInline preload="metadata" className="w-full h-full object-cover"/> : <img src={url} alt={`عمل ${idx+1}`} className="w-full h-full object-cover"/>}<span className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] p-2 line-clamp-1">{draft.portfolioDescriptions?.[url]||'بدون وصف'}</span></button>)}</div> : <div className="text-xs text-gray-500 text-center p-5 border border-dashed rounded-2xl">لم تضف أعمالاً بعد.</div>}
+        {(draft.portfolio || []).length > 0 ? <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">{(draft.portfolio || []).map((url,idx)=><button type="button" onClick={()=>setViewingPortfolioUrl(url)} key={`${url}-${idx}`} className="text-right relative rounded-2xl overflow-hidden bg-gray-100 aspect-square border shadow-sm hover:shadow-lg"><MediaThumbnail url={url} type={isVideoUrl(url)?'video':'image'} thumbnailUrl={exploreThumbnailByUrl.get(url)} alt={`عمل ${idx+1}`} /><span className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] p-2 line-clamp-1">{draft.portfolioDescriptions?.[url]||'بدون وصف'}</span></button>)}</div> : <div className="text-xs text-gray-500 text-center p-5 border border-dashed rounded-2xl">لم تضف أعمالاً بعد.</div>}
         {persistedProvider && <button type="button" disabled={isSaving || isUploading} onClick={()=>void savePortfolio()} className="w-full sm:w-auto px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 disabled:bg-gray-400 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2"><Save className="w-4 h-4"/>{isUploading ? 'انتظر اكتمال الرفع...' : isSaving ? 'جاري الحفظ...' : portfolioDirty ? 'حفظ معرض الأعمال' : 'حفظ معرض الأعمال'}</button>}
       </section>
 
@@ -197,7 +203,7 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
         <BusinessOffersPanel ownerId={currentUser.id} ownerType="مزود خدمة" targetId={(persistedProvider || (draft.id ? draft : null))?.id} originalPrice={(persistedProvider || draft).priceStart || 0} offers={offers} onMessage={setMessage} onError={setError}/>
       </div>
 
-      {unifiedWorks.length>0&&<section className="bg-white p-5 rounded-3xl border space-y-3"><h2 className="font-bold flex gap-2"><Sparkles className="w-5 h-5 text-amber-600"/>معرض أعمالي ومنشوراتي في Explore ({unifiedWorks.length})</h2><div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">{unifiedWorks.map((work,index)=><button type="button" key={`${work.kind}-${work.url}-${index}`} onClick={()=>work.kind==='post'?setViewingPost(work.post):setViewingPortfolioUrl(work.url)} className="border rounded-2xl overflow-hidden bg-gray-50 text-right"><div className="aspect-square bg-gray-100">{work.type==='video'?<video src={work.url} poster={work.thumbnailUrl} muted playsInline preload="metadata" className="w-full h-full object-cover"/>:<img src={work.url} className="w-full h-full object-cover"/>}</div><div className="p-3"><b className="text-xs block">{work.title}</b><p className="text-[11px] text-gray-500 line-clamp-2 mt-1">{work.description||'بدون وصف'}</p></div></button>)}</div></section>}
+      {unifiedWorks.length>0&&<section className="bg-white p-5 rounded-3xl border space-y-3"><h2 className="font-bold flex gap-2"><Sparkles className="w-5 h-5 text-amber-600"/>معرض أعمالي ومنشوراتي في Explore ({unifiedWorks.length})</h2><div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">{unifiedWorks.map((work,index)=><button type="button" key={`${work.kind}-${work.url}-${index}`} onClick={()=>work.kind==='post'?setViewingPost(work.post):setViewingPortfolioUrl(work.url)} className="border rounded-2xl overflow-hidden bg-gray-50 text-right"><div className="aspect-square bg-gray-100"><MediaThumbnail url={work.url} type={work.type} thumbnailUrl={work.thumbnailUrl} alt={work.title} /></div><div className="p-3"><b className="text-xs block">{work.title}</b><p className="text-[11px] text-gray-500 line-clamp-2 mt-1">{work.description||'بدون وصف'}</p></div></button>)}</div></section>}
       {viewingPost&&<MediaViewer url={viewingPost.mediaUrl} type={viewingPost.mediaType} title={viewingPost.title} description={viewingPost.caption} onClose={()=>setViewingPost(null)} onPrevious={unifiedWorks.length>1?()=>{const i=unifiedWorks.findIndex(x=>x.kind==='post'&&x.post.id===viewingPost.id);const work=unifiedWorks[(i-1+unifiedWorks.length)%unifiedWorks.length];work.kind==='post'?setViewingPost(work.post):(setViewingPost(null),setViewingPortfolioUrl(work.url))}:undefined} onNext={unifiedWorks.length>1?()=>{const i=unifiedWorks.findIndex(x=>x.kind==='post'&&x.post.id===viewingPost.id);const work=unifiedWorks[(i+1)%unifiedWorks.length];work.kind==='post'?setViewingPost(work.post):(setViewingPost(null),setViewingPortfolioUrl(work.url))}:undefined} onSaveMetadata={onUpdatePostMetadata?async value=>{await onUpdatePostMetadata(viewingPost.id,value.title,value.description);setViewingPost({...viewingPost,title:value.title,caption:value.description});setMessage('تم حفظ عنوان ووصف العمل.');}:undefined} onDelete={onDeletePost?async()=>{await onDeletePost(viewingPost.id);setViewingPost(null);setMessage('تم حذف العمل بنجاح.');}:undefined}/>}
       {viewingPortfolioUrl&&<MediaViewer url={viewingPortfolioUrl} type={isVideoUrl(viewingPortfolioUrl)?'video':'image'} title={draft.portfolioTitles?.[viewingPortfolioUrl]||'عمل من المعرض'} description={draft.portfolioDescriptions?.[viewingPortfolioUrl]} onClose={()=>setViewingPortfolioUrl('')} onPrevious={unifiedWorks.length>1?()=>{const i=unifiedWorks.findIndex(x=>x.url===viewingPortfolioUrl);const work=unifiedWorks[(i-1+unifiedWorks.length)%unifiedWorks.length];work.kind==='post'?(setViewingPortfolioUrl(''),setViewingPost(work.post)):(setViewingPost(null),setViewingPortfolioUrl(work.url))}:undefined} onNext={unifiedWorks.length>1?()=>{const i=unifiedWorks.findIndex(x=>x.url===viewingPortfolioUrl);const work=unifiedWorks[(i+1)%unifiedWorks.length];work.kind==='post'?(setViewingPortfolioUrl(''),setViewingPost(work.post)):(setViewingPost(null),setViewingPortfolioUrl(work.url))}:undefined} onSaveMetadata={async value=>{const base=persistedProvider||draft;const next={...draft,portfolioTitles:{...(draft.portfolioTitles||{}),[viewingPortfolioUrl]:value.title},portfolioDescriptions:{...(draft.portfolioDescriptions||{}),[viewingPortfolioUrl]:value.description}};const saved=await saveOwnedServiceProvider({...base,...next,id:base.id,ownerId:currentUser.id});setDraft(saved);notifyUpdated(saved);setMessage('تم حفظ عنوان ووصف العمل.')}} onDelete={async()=>{const base=persistedProvider||draft;const next={...draft,portfolio:(draft.portfolio||[]).filter(x=>x!==viewingPortfolioUrl)};const saved=await saveOwnedServiceProvider({...base,...next,id:base.id,ownerId:currentUser.id});setDraft(saved);setViewingPortfolioUrl('');setMessage('تم حذف العمل وحفظ التغيير.')}}/>}
       {bookingDialog && <BookingStatusSummaryDialog bookings={bookingDialog === 'accepted' ? acceptedBookings : pendingBookings} variant={bookingDialog} onClose={()=>setBookingDialog(null)} onManage={()=>{const filter=bookingDialog === 'accepted' ? 'مقبول' : 'قيد المراجعة';setBookingDialog(null);onOpenBookings(filter);}} />}

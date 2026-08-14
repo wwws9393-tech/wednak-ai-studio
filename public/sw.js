@@ -12,8 +12,17 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
-const CACHE_NAME = 'wedding-shell-v2';
+const CACHE_NAME = 'wedding-shell-v3';
+const MEDIA_CACHE_NAME = 'wednak-media-v1';
+const MEDIA_CACHE_LIMIT = 160;
 const APP_SHELL = ['/', '/manifest.webmanifest', '/wednak-mark-green.svg'];
+
+async function trimMediaCache() {
+  const cache = await caches.open(MEDIA_CACHE_NAME);
+  const keys = await cache.keys();
+  if (keys.length <= MEDIA_CACHE_LIMIT) return;
+  await Promise.all(keys.slice(0, keys.length - MEDIA_CACHE_LIMIT).map((key) => cache.delete(key)));
+}
 
 messaging.onBackgroundMessage((payload) => {
   const data = payload.data || {};
@@ -54,7 +63,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME && key !== MEDIA_CACHE_NAME).map((key) => caches.delete(key))))
       .then(() => self.clients.claim()),
   );
 });
@@ -63,6 +72,32 @@ self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
+
+  const cacheableMediaFolders = ['/media-thumbnails/', '/hall-cover/', '/hall-profile/', '/provider-cover/', '/provider-avatar/', '/user-profile/', '/user-cover/'];
+  const isSupabaseImage = url.hostname === 'bzdwwazrjxyubfacsxcs.supabase.co'
+    && request.destination === 'image'
+    && cacheableMediaFolders.some((folder) => url.pathname.includes(folder));
+  if (isSupabaseImage) {
+    event.respondWith(
+      caches.open(MEDIA_CACHE_NAME).then(async (cache) => {
+        const cached = await cache.match(request);
+        const refresh = fetch(request).then(async (response) => {
+          if (response.ok || response.type === 'opaque') {
+            await cache.put(request, response.clone());
+            await trimMediaCache();
+          }
+          return response;
+        });
+        if (cached) {
+          event.waitUntil(refresh.catch(() => undefined));
+          return cached;
+        }
+        return refresh;
+      }),
+    );
+    return;
+  }
+
   if (url.origin !== self.location.origin) return;
 
   if (request.mode === 'navigate') {

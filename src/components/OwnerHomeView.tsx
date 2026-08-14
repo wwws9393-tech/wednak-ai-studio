@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Building2, CheckCircle2, Clock, Sparkles, Save, AlertCircle, Tag, Image as ImageIcon, Upload, Trash2 } from 'lucide-react';
 import { Hall, Booking, UserProfile, FeedPost, BusinessOffer } from '../types';
 import { saveOwnedHall } from '../lib/business';
-import { uploadOwnerImage, uploadOwnerMedia } from '../lib/storage';
+import { uploadOwnerImage, uploadOwnerMediaAsset } from '../lib/storage';
 import { MediaViewer } from './MediaViewer';
+import { MediaThumbnail } from './MediaThumbnail';
 import { CroppedImageInput } from './CroppedImageInput';
 import { Coordinates, HallMap } from './HallMap';
 import { BookingStatusSummaryDialog } from './BookingStatusSummaryDialog';
@@ -49,6 +50,7 @@ export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({ currentUser, halls
   const [postTitle, setPostTitle] = useState('');
   const [postCaption, setPostCaption] = useState('');
   const [postMediaUrl, setPostMediaUrl] = useState('');
+  const [postThumbnailUrl, setPostThumbnailUrl] = useState('');
   const [postMediaType,setPostMediaType]=useState<'image'|'video'>('image');
   const [viewingPost,setViewingPost]=useState<FeedPost|null>(null);
   const [bookingDialog, setBookingDialog] = useState<'accepted' | 'pending' | null>(null);
@@ -64,10 +66,11 @@ export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({ currentUser, halls
   const uploadImage = async (file: File, kind: 'cover' | 'profile' | 'post' | 'postVideo') => {
     setError(''); setIsUploading(true);
     try {
-      const url = kind==='post'||kind==='postVideo' ? await uploadOwnerMedia(file,'post-media') : await uploadOwnerImage(file, kind === 'cover' ? 'hall-cover' : 'hall-profile');
+      const asset = kind==='post'||kind==='postVideo' ? await uploadOwnerMediaAsset(file,'post-media') : null;
+      const url = asset?.mediaUrl || await uploadOwnerImage(file, kind === 'cover' ? 'hall-cover' : 'hall-profile');
       if (kind === 'cover') setDraft((prev) => ({ ...prev, coverImage: prev.coverImage||url, images: [...new Set([...(prev.images || []),url])] }));
       if (kind === 'profile') setDraft((prev) => ({ ...prev, profileImageUrl: url }));
-      if (kind === 'post'||kind==='postVideo') {setPostMediaUrl(url);setPostMediaType(file.type.startsWith('video/')?'video':'image');}
+      if (kind === 'post'||kind==='postVideo') {setPostMediaUrl(url);setPostThumbnailUrl(asset?.thumbnailUrl || '');setPostMediaType(file.type.startsWith('video/')?'video':'image');}
     } catch (err) { setError(err instanceof Error ? err.message : 'تعذر رفع الصورة.'); }
     finally { setIsUploading(false); }
   };
@@ -111,8 +114,8 @@ export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({ currentUser, halls
     if (!postTitle.trim()) return setError('عنوان العمل مطلوب، أما الوصف فاختياري.');
     if (!postMediaUrl && !hall.coverImage) return setError('اختر صورة للمنشور.');
     try {
-      await onCreatePost({ authorId: currentUser.id, authorName: hall.name, authorAvatar: hall.profileImageUrl || hall.coverImage || '', authorRole: 'صاحب قاعة', targetType: 'hall', targetId: hall.id, title: postTitle.trim(), caption: postCaption.trim(), mediaType: postMediaType, mediaUrl: postMediaUrl || hall.coverImage || '', city: hall.city });
-      setPostTitle(''); setPostCaption(''); setPostMediaUrl(''); setMessage('تم نشر المحتوى في Explore.');
+      await onCreatePost({ authorId: currentUser.id, authorName: hall.name, authorAvatar: hall.profileImageUrl || hall.coverImage || '', authorRole: 'صاحب قاعة', targetType: 'hall', targetId: hall.id, title: postTitle.trim(), caption: postCaption.trim(), mediaType: postMediaType, mediaUrl: postMediaUrl || hall.coverImage || '', thumbnailUrl: postThumbnailUrl || undefined, city: hall.city });
+      setPostTitle(''); setPostCaption(''); setPostMediaUrl(''); setPostThumbnailUrl(''); setMessage('تم نشر المحتوى في Explore.');
     } catch (err) { setError(err instanceof Error ? err.message : 'تعذر النشر.'); }
   };
 
@@ -151,7 +154,7 @@ export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({ currentUser, halls
         <BusinessOffersPanel ownerId={currentUser.id} ownerType="صاحب قاعة" targetId={(persistedHall || (draft.id ? draft : null))?.id} originalPrice={(persistedHall || draft).price || 0} offers={offers} onMessage={setMessage} onError={setError}/>
       </div>
 
-      {ownPosts.length > 0 && <section className="bg-white p-5 rounded-3xl border space-y-3"><h2 className="font-bold">معرض أعمالي ({ownPosts.length})</h2><div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">{ownPosts.map(post=><button key={post.id} onClick={()=>setViewingPost(post)} className="border rounded-2xl overflow-hidden text-right hover:shadow-lg transition"><div className="h-40 bg-gray-100">{post.mediaType==='video'?<video src={post.mediaUrl} poster={post.thumbnailUrl} muted playsInline preload="metadata" className="w-full h-full object-cover"/>:<img src={post.mediaUrl} className="w-full h-full object-cover"/>}</div><div className="p-3"><b className="text-xs">{post.title}</b><p className="text-[11px] text-gray-500 line-clamp-2">{post.caption||'بدون وصف'}</p></div></button>)}</div></section>}
+      {ownPosts.length > 0 && <section className="bg-white p-5 rounded-3xl border space-y-3"><h2 className="font-bold">معرض أعمالي ({ownPosts.length})</h2><div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">{ownPosts.map(post=><button key={post.id} onClick={()=>setViewingPost(post)} className="border rounded-2xl overflow-hidden text-right hover:shadow-lg transition"><div className="h-40 bg-gray-100"><MediaThumbnail url={post.mediaUrl} type={post.mediaType} thumbnailUrl={post.thumbnailUrl} alt={post.title} /></div><div className="p-3"><b className="text-xs">{post.title}</b><p className="text-[11px] text-gray-500 line-clamp-2">{post.caption||'بدون وصف'}</p></div></button>)}</div></section>}
       {viewingPost&&<MediaViewer url={viewingPost.mediaUrl} type={viewingPost.mediaType} title={viewingPost.title} description={viewingPost.caption} onClose={()=>setViewingPost(null)} onPrevious={ownPosts.length>1?()=>{const i=ownPosts.findIndex(x=>x.id===viewingPost.id);setViewingPost(ownPosts[(i-1+ownPosts.length)%ownPosts.length])}:undefined} onNext={ownPosts.length>1?()=>{const i=ownPosts.findIndex(x=>x.id===viewingPost.id);setViewingPost(ownPosts[(i+1)%ownPosts.length])}:undefined} onSaveMetadata={onUpdatePostMetadata?async value=>{await onUpdatePostMetadata(viewingPost.id,value.title,value.description);setViewingPost({...viewingPost,title:value.title,caption:value.description});setMessage('تم حفظ عنوان ووصف العمل.');}:undefined} onDelete={onDeletePost?async()=>{await onDeletePost(viewingPost.id);setViewingPost(null);setMessage('تم حذف العمل بنجاح.');}:undefined}/>}
       {bookingDialog && <BookingStatusSummaryDialog bookings={bookingDialog === 'accepted' ? acceptedBookings : pendingBookings} variant={bookingDialog} onClose={()=>setBookingDialog(null)} onManage={()=>{const filter=bookingDialog === 'accepted' ? 'مقبول' : 'قيد المراجعة';setBookingDialog(null);onOpenBookings(filter);}} />}
     </div>

@@ -41,6 +41,7 @@ export const HallCard: React.FC<HallCardProps> = ({
           alt={hall.name || 'قاعة'}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           loading="lazy"
+          decoding="async"
           onError={(e) => {
             const image = e.currentTarget;
             if (image.src !== FALLBACK_HALL_IMAGE) image.src = FALLBACK_HALL_IMAGE;
