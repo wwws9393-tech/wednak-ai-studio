@@ -147,10 +147,11 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
           {filteredBookings.map((b) => (
             <div
               key={b.id}
-              className="bg-white rounded-2xl border border-gray-200 hover:border-emerald-300 p-4 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between space-y-3 cursor-pointer group"
+              className="relative overflow-hidden bg-gradient-to-br from-white via-white to-amber-50/45 rounded-3xl border border-amber-300/90 ring-1 ring-amber-100 p-4 shadow-[0_12px_30px_rgba(120,83,24,0.09)] hover:border-amber-400 hover:shadow-[0_16px_38px_rgba(120,83,24,0.14)] transition-all flex flex-col justify-between space-y-3 cursor-pointer group"
               onClick={() => onSelectBooking(b)}
               id={`booking-card-${b.id}`}
             >
+              <span className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-amber-400 to-transparent" aria-hidden="true" />
               <div className="flex items-start gap-3">
                 <img
                   src={b.itemImage}
