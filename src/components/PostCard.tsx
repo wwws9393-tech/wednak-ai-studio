@@ -4,6 +4,7 @@ import { FeedPost } from '../types';
 
 interface PostCardProps {
   post: FeedPost;
+  locationLabel?: string;
   isLiked: boolean;
   onToggleLike: (postId: string) => void;
   onOpenMedia: (post: FeedPost) => void;
@@ -13,6 +14,7 @@ interface PostCardProps {
 
 export const PostCard: React.FC<PostCardProps> = ({
   post,
+  locationLabel,
   isLiked,
   onToggleLike,
   onOpenMedia,
@@ -66,7 +68,7 @@ export const PostCard: React.FC<PostCardProps> = ({
             <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-0.5">
               <span className="flex items-center gap-0.5">
                 <MapPin className="w-3 h-3 text-emerald-600" />
-                {post.city}
+                {locationLabel || post.city}
               </span>
               <span>•</span>
               <span>{post.createdAt}</span>

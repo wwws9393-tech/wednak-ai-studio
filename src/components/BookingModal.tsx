@@ -15,6 +15,7 @@ import {
   subscribeBookingAvailability,
 } from '../lib/firebase';
 import { WednakLogo } from './WednakLogo';
+import { formatAreaWithCity } from '../lib/location';
 
 interface BookingModalProps {
   item: { type: 'hall'; data: Hall } | { type: 'provider'; data: ServiceProvider } | null;
@@ -273,7 +274,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
     if (selectedBooked) throw new Error('هذا الموعد محجوز. اختر فترة أو تاريخاً آخر.');
     await assertBookingSelectionAvailable(item.data.id, bookingDate, timeSlot, startTime, endTime);
     await onSubmitBooking({
-      itemType: item.type, itemId: item.data.id, itemName: item.data.name, itemLocation: item.data.location,
+      itemType: item.type, itemId: item.data.id, itemName: item.data.name, itemLocation: isHall ? formatAreaWithCity(hall!.location, hall!.city) : item.data.location,
       itemImage: isHall ? (hall!.coverImage || hall!.images[0] || '') : (provider!.avatar || provider!.coverImage || ''),
       date: bookingDate, timeSlot, startTime, endTime,
       guests: isHall ? effectiveGuests : undefined, totalPrice, depositAmount, notes: notes.trim(),

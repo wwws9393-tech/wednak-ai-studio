@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Star, MapPin, Users, Sparkles, CheckCircle, Heart, ArrowLeft, Shield, Calendar, Clock, Check, AlertCircle, ShieldCheck, Play } from 'lucide-react';
+import { formatAreaWithCity } from '../lib/location';
 import { Hall, UserProfile, Booking, FeedPost } from '../types';
 import { getIraqTodayDate, PendingAvailabilityRange, subscribeBookingAvailability } from '../lib/firebase';
 import { MediaViewer } from './MediaViewer';
@@ -103,7 +104,7 @@ export const HallDetailsModal: React.FC<HallDetailsModalProps> = ({
             {hall.category && <span className="bg-amber-500 text-black text-xs font-black px-3 py-1 rounded-lg inline-block mb-2">{hall.category}</span>}
             <h2 className="text-2xl sm:text-3xl font-black leading-tight drop-shadow-md">{hall.name}</h2>
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-white/95">
-              <span className="flex items-center gap-1.5"><MapPin className="w-4 h-4 text-amber-300 shrink-0" /><span>{hall.location || hall.city || 'العراق'}</span></span>
+              <span className="flex items-center gap-1.5"><MapPin className="w-4 h-4 text-amber-300 shrink-0" /><span>{formatAreaWithCity(hall.location, hall.city)}</span></span>
               <span className="flex items-center gap-1.5 font-bold text-amber-300"><Star className="w-4 h-4 fill-current shrink-0" /><span>{safeRating.toFixed(1)} ({safeReviews} تقييم)</span></span>
             </div>
           </div>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Heart, Star, Users, MapPin, Sparkles, ArrowLeft, ShieldCheck } from 'lucide-react';
 import { Hall, UserProfile } from '../types';
+import { formatAreaWithCity } from '../lib/location';
 
 interface HallCardProps {
   hall: Hall;
@@ -66,7 +67,7 @@ export const HallCard: React.FC<HallCardProps> = ({
         <div className="absolute bottom-3 right-3 left-3 flex items-center justify-between text-white text-xs">
           <div className="flex items-center gap-1 bg-black/40 backdrop-blur-xs px-2 py-1 rounded-md">
             <MapPin className="w-3.5 h-3.5 text-amber-300" />
-            <span className="font-semibold">{hall.location || hall.city || 'العراق'}</span>
+            <span className="font-semibold">{formatAreaWithCity(hall.location, hall.city)}</span>
           </div>
           <div className="flex items-center gap-1 bg-amber-500 text-black px-2 py-0.5 rounded-md font-bold">
             <Star className="w-3 h-3 fill-current" />

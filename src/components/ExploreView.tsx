@@ -5,6 +5,7 @@ import { PostCard } from './PostCard';
 import { HallCard } from './HallCard';
 import { ServiceProviderCard } from './ServiceProviderCard';
 import { MediaViewer } from './MediaViewer';
+import { formatAreaWithCity } from '../lib/location';
 
 interface ExploreViewProps {
   posts: FeedPost[];
@@ -55,6 +56,12 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   const filteredProviders = serviceProviders.filter(
     (p) => selectedCity === 'جميع المحافظات' || p.city === selectedCity
   );
+
+  const postLocationLabel = (post: FeedPost) => {
+    if (post.targetType !== 'hall') return post.city;
+    const hall = halls.find((candidate) => candidate.id === post.targetId);
+    return formatAreaWithCity(hall?.location, hall?.city || post.city);
+  };
 
   const openPostTarget = (post: FeedPost) => {
     if (post.targetType === 'hall') {
@@ -176,6 +183,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                 <PostCard
                   key={post.id}
                   post={post}
+                  locationLabel={postLocationLabel(post)}
                   isLiked={likedPostIds.includes(post.id)}
                   onToggleLike={onTogglePostLike}
                   onOpenMedia={setViewingPost}
