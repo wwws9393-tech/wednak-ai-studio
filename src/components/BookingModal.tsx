@@ -5,6 +5,7 @@ import { Hall, ServiceProvider, UserProfile, Booking } from '../types';
 import {
   assertBookingSelectionAvailable,
   auth,
+  bookingRequesterKey,
   fetchUserFromFirestore,
   getIraqDateAfterDays,
   getIraqTodayDate,
@@ -112,7 +113,7 @@ function normalizeIraqiPhone(raw: string): string {
 }
 
 
-export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClose, currentUser, onLoginSuccess, onSubmitBooking }) => {
+export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClose, currentUser, bookings = [], onLoginSuccess, onSubmitBooking }) => {
   const [bookingDate, setBookingDate] = useState(() => getIraqDateAfterDays(7));
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodKey>('evening');
   const [startTime, setStartTime] = useState('18:00');
@@ -203,6 +204,23 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
   const selectedMinutes = useMemo(() => minutesForRange(startTime, endTime, selectedPeriod), [startTime, endTime, selectedPeriod]);
   const selectedBooked = selectedMinutes.some((minute) => acceptedSet.has(minute));
   const selectedPending = pendingRanges.some((range) => selectedMinutes.some((minute) => minute >= range.startMinute && minute < range.endMinute));
+  const currentRequesterKey = currentUser.isGuest ? '' : bookingRequesterKey(currentUser.id);
+  const selectedOwnPendingFromAvailability = !!currentRequesterKey && pendingRanges.some((range) => (
+    range.requesterKey === currentRequesterKey
+    && selectedMinutes.some((minute) => minute >= range.startMinute && minute < range.endMinute)
+  ));
+  const selectedOwnPendingFromBookings = bookings.some((booking) => {
+    if ((booking.status !== 'قيد المراجعة' && booking.status !== 'pending')
+      || (booking.requesterId || booking.customerId) !== currentUser.id
+      || booking.itemId !== item?.data.id
+      || booking.date !== bookingDate
+      || !booking.startTime
+      || !booking.endTime) return false;
+    const bookingPeriod: PeriodKey = Number(booking.startTime.slice(0, 2)) >= 23 || Number(booking.endTime.slice(0, 2)) < 6 ? 'night' : 'evening';
+    const ownMinutes = minutesForRange(booking.startTime, booking.endTime, bookingPeriod);
+    return selectedMinutes.some((minute) => ownMinutes.includes(minute));
+  });
+  const selectedOwnPending = selectedOwnPendingFromAvailability || selectedOwnPendingFromBookings;
   const timeSlot = `${selectedPeriodConfig.label} (${hourLabel(Number(startTime.slice(0, 2)))} - ${hourLabel(Number(endTime.slice(0, 2)) || 24)})`;
   const selectedStartHour = Number(startTime.slice(0, 2)) + (selectedPeriod === 'night' && Number(startTime.slice(0, 2)) < 6 ? 24 : 0);
   const isFutureStartHour = (hour: number) => isIraqBookingStartInFuture(bookingDate, hourToTime(hour), nowMs, Math.floor(hour / 24));
@@ -211,7 +229,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
   const endOptions = Array.from({ length: selectedPeriodConfig.end - selectedStartHour }, (_, i) => selectedStartHour + i + 1);
   const selectedDatePast = isIraqDateInPast(bookingDate, new Date(nowMs));
   const selectedPast = selectedDatePast || !isFutureStartHour(selectedStartHour);
-  const bookingSelectionBlocked = selectedPast || selectedBooked || availabilityLoading || selectedMinutes.length === 0 || startOptions.length === 0;
+  const bookingSelectionBlocked = selectedPast || selectedBooked || selectedOwnPending || availabilityLoading || selectedMinutes.length === 0 || startOptions.length === 0;
 
   const openDatePicker = () => {
     const input = dateInputRef.current;
@@ -273,6 +291,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
     if (isIraqDateInPast(bookingDate)) throw new Error('لا يمكن الحجز في يوم سابق. اختر اليوم أو تاريخاً لاحقاً.');
     if (!isIraqBookingStartInFuture(bookingDate, startTime, Date.now(), Math.floor(selectedStartHour / 24))) throw new Error('هذه الفترة انتهت حسب توقيت بغداد. اختر فترة لاحقة.');
     if (selectedBooked) throw new Error('هذا الموعد محجوز. اختر فترة أو تاريخاً آخر.');
+    if (selectedOwnPending) throw new Error('لديك طلب قيد المراجعة لنفس الموعد. لا يمكن إرسال طلب مكرر.');
     await assertBookingSelectionAvailable(item.data.id, bookingDate, timeSlot, startTime, endTime);
     await onSubmitBooking({
       itemType: item.type, itemId: item.data.id, itemName: item.data.name, itemLocation: isHall ? formatAreaWithCity(hall!.location, hall!.city) : item.data.location,
@@ -310,6 +329,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
     if (selectedDatePast) return setErrorMsg('لا يمكن الحجز في يوم سابق. اختر اليوم أو تاريخاً لاحقاً.');
     if (selectedPast) return setErrorMsg('هذه الفترة انتهت حسب توقيت بغداد. اختر فترة لاحقة.');
     if (selectedBooked) return setErrorMsg('هذا الموعد محجوز.');
+    if (selectedOwnPending) return setErrorMsg('لديك طلب قيد المراجعة لنفس الموعد. انتظر قرار صاحب القاعة أو الخدمة.');
     if (selectedMinutes.length === 0 || startOptions.length === 0) return setErrorMsg('اختر وقتاً متاحاً لإكمال الحجز.');
     setIsLoading(true);
     try {
@@ -454,15 +474,15 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
       </select>
     </div>
   </div>
-  <div className={`mt-2 p-2 rounded-xl text-[10px] font-bold ${selectedPast ? 'bg-gray-100 text-gray-600 border border-gray-300' : selectedBooked ? 'bg-rose-50 text-rose-700 border border-rose-200' : selectedPending ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
-    {selectedPast ? 'هذا الوقت مضى حسب توقيت بغداد ولا يمكن حجزه.' : selectedBooked ? 'الوقت المختار يتداخل مع حجز مقبول. اختر وقتاً آخر.' : selectedPending ? 'يوجد طلب قيد المراجعة لهذا الوقت، ويمكنك إرسال طلبك أيضاً.' : 'الوقت المختار متاح حالياً.'}
+  <div className={`mt-2 p-2 rounded-xl text-[10px] font-bold ${selectedPast ? 'bg-gray-100 text-gray-600 border border-gray-300' : selectedBooked ? 'bg-rose-50 text-rose-700 border border-rose-200' : selectedOwnPending ? 'bg-amber-100 text-amber-900 border border-amber-300' : selectedPending ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+    {selectedPast ? 'هذا الوقت مضى حسب توقيت بغداد ولا يمكن حجزه.' : selectedBooked ? 'الوقت المختار يتداخل مع حجز مقبول. اختر وقتاً آخر.' : selectedOwnPending ? 'طلبك لهذا الموعد قيد المراجعة؛ لا يمكن إرسال طلب مكرر.' : selectedPending ? 'يوجد طلب قيد المراجعة لهذا الوقت، ويمكن لحساب مختلف إرسال طلب منافس واحد.' : 'الوقت المختار متاح حالياً.'}
   </div>
 </div>
 {isHall && hall && <div><div className="flex justify-between text-xs font-bold"><span><Users className="inline w-4 h-4"/> عدد الضيوف</span><span>{effectiveGuests}</span></div><input type="range" min={1} max={hall.capacity} step={10} value={effectiveGuests} onChange={(e)=>setGuestsCount(Number(e.target.value))} className="w-full accent-emerald-700"/></div>}
           <div className="grid sm:grid-cols-2 gap-3"><div><label className="text-xs font-bold"><User className="inline w-4 h-4"/> الاسم</label><input value={customerName} onChange={(e)=>setCustomerName(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs" required/></div><div><label className="text-xs font-bold"><Phone className="inline w-4 h-4"/> الهاتف</label><input type="tel" inputMode="numeric" maxLength={11} value={customerPhone} onChange={(e)=>setCustomerPhone(toEnglishDigits(e.target.value).replace(/\D/g, '').slice(0, 11))} placeholder="07701234567" className="w-full px-3 py-2 border rounded-xl text-xs dir-ltr" required/></div></div>
           <div><label className="text-xs font-bold"><FileText className="inline w-4 h-4"/> ملاحظات</label><textarea value={notes} onChange={(e)=>setNotes(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs h-16"/></div>
           <div className="p-2.5 bg-gray-50 border rounded-xl text-[11px] text-gray-600 flex gap-2"><ShieldCheck className="w-4 h-4 text-emerald-600"/>{currentUser.isGuest?'سنرسل OTP حقيقي ونربط الحجز بهويتك.':'الحجز خاص بك وبالطرف المستلم فقط.'}</div>
-          <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className="px-4 py-2 text-xs">إلغاء</button><button disabled={isLoading||isSelfBooking||bookingSelectionBlocked} aria-disabled={isLoading||isSelfBooking||bookingSelectionBlocked} className="px-5 py-2 bg-emerald-700 text-white rounded-xl text-xs font-bold flex gap-1 transition-opacity disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-35"><WalletCards className="w-4 h-4"/>{isLoading?'جاري التنفيذ...':currentUser.isGuest?'إرسال OTP':'دفع العربون'}</button></div>
+          <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className="px-4 py-2 text-xs">إلغاء</button><button disabled={isLoading||isSelfBooking||bookingSelectionBlocked} aria-disabled={isLoading||isSelfBooking||bookingSelectionBlocked} className="px-5 py-2 bg-emerald-700 text-white rounded-xl text-xs font-bold flex gap-1 transition-opacity disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-35"><WalletCards className="w-4 h-4"/>{selectedOwnPending?'قيد المراجعة':isLoading?'جاري التنفيذ...':currentUser.isGuest?'إرسال OTP':'دفع العربون'}</button></div>
         </form> : guestStep==='otp_form' ? <form onSubmit={verifyGuestOtp} className="p-5 space-y-4"><div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs"><KeyRound className="inline w-4 h-4"/> أدخل الرمز الحقيقي المرسل إلى {customerPhone}</div><input value={otpCode} onChange={(e)=>setOtpCode(e.target.value)} inputMode="numeric" maxLength={6} className="w-full px-3 py-2 border rounded-xl text-center text-xl tracking-widest" placeholder="000000"/><div className="flex justify-between"><button type="button" onClick={()=>setGuestStep('details')} className="text-xs flex gap-1"><ArrowRight className="w-4 h-4"/>تغيير الرقم</button><button disabled={isLoading} className="px-5 py-2 bg-emerald-800 text-white rounded-xl text-xs font-bold">{isLoading?'جاري التحقق...':'الانتقال للدفع'}</button></div></form> : <div className="p-5 space-y-4"><div className="text-center"><WalletCards className="w-10 h-10 mx-auto text-emerald-700"/><h3 className="font-black mt-2">دفع العربون</h3><p className="text-2xl font-black text-amber-700">{depositAmount.toLocaleString()} د.ع</p></div><div className="grid grid-cols-2 gap-3">{(['زين كاش','Qi Card'] as const).map(method=><button key={method} onClick={()=>setPaymentMethod(method)} className={`p-4 border-2 rounded-2xl font-bold text-sm ${paymentMethod===method?'border-emerald-700 bg-emerald-50':'border-gray-200'}`}><CreditCard className="w-5 h-5 mx-auto mb-2"/>{method}</button>)}</div><div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900">سيُسجل الطلب بانتظار الدفع إلى أن يتم ربط حساب التاجر الرسمي ببوابة {paymentMethod}. لن نعتبر العربون مدفوعاً دون تأكيد حقيقي من بوابة الدفع.</div>{bookingSelectionBlocked && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-[11px] font-bold text-rose-800">انتهى التاريخ أو الوقت المختار، أو أصبح الموعد محجوزاً. ارجع واختر موعداً متاحاً.</div>}<button disabled={isLoading||!bookingUser||bookingSelectionBlocked} aria-disabled={isLoading||!bookingUser||bookingSelectionBlocked} onClick={async()=>{if(!bookingUser||bookingSelectionBlocked)return;setIsLoading(true);try{await submitBooking(bookingUser);onClose()}catch(err){setErrorMsg(err instanceof Error?err.message:'تعذر إرسال الحجز')}finally{setIsLoading(false)}}} className="w-full py-3 bg-emerald-700 text-white rounded-xl font-bold text-xs transition-opacity disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-35">{isLoading?'جاري إرسال الطلب...':`اختيار ${paymentMethod} وإرسال الطلب`}</button></div>}
       </div>
     </div>

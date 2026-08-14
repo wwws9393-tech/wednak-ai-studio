@@ -45,7 +45,7 @@ import {
   createPostInFirestore,
   updateHallInFirestore,
   deletePostInFirestore,
-  updatePostDescriptionInFirestore,
+  updatePostMetadataInFirestore,
   subscribeAllUsers,
   setUserBlockedInFirestore,
   deleteUserAndDataInFirestore,
@@ -320,15 +320,17 @@ export function App() {
     await dispatchBookingPush(booking.id, 'created');
   };
   const handleUpdateBookingStatus = async (bookingId: string, newStatus: BookingStatus) => {
-    await updateBookingStatusInFirestore(bookingId, newStatus);
+    const autoRejectedIds = await updateBookingStatusInFirestore(bookingId, newStatus);
     // Keep the visible cards in sync immediately; the Firestore listener remains
     // the source of truth and will reconcile the same value afterwards.
     setBookings((current) => current.map((booking) => (
       booking.id === bookingId
         ? { ...booking, status: newStatus, updatedAt: new Date().toISOString() }
+        : autoRejectedIds.includes(booking.id)
+          ? { ...booking, status: 'مرفوض', updatedAt: new Date().toISOString() }
         : booking
     )));
-    await dispatchBookingPush(bookingId, 'updated');
+    await Promise.all([bookingId, ...autoRejectedIds].map((id) => dispatchBookingPush(id, 'updated')));
   };
   const resolveBookingRequester = async (booking: Booking): Promise<UserProfile | null> => {
     const requesterId = booking.requesterId || booking.customerId;
@@ -360,7 +362,7 @@ export function App() {
   const handleCreatePost = async (postData: Omit<FeedPost, 'id' | 'createdAt' | 'likesCount' | 'sharesCount'>) => { await createPostInFirestore(postData); };
   const handleUpdateHall = async (updatedHall: Hall) => { await updateHallInFirestore(updatedHall); };
   const handleDeletePost = async (postId: string) => { await deletePostInFirestore(postId); };
-  const handleUpdatePostDescription = async (postId:string,caption:string) => { await updatePostDescriptionInFirestore(postId,caption); };
+  const handleUpdatePostMetadata = async (postId:string,title:string,caption:string) => { await updatePostMetadataInFirestore(postId,title,caption); };
   const openBookings = (filter: 'الكل' | 'قيد المراجعة' | 'مقبول' = 'الكل') => {
     setBookingsFilter(filter);
     setCurrentTab('bookings');
@@ -387,10 +389,10 @@ export function App() {
 
   const renderRoleSpecificView = () => {
     if (currentUser.accountType === 'صاحب قاعة' && currentTab === 'home') {
-      return <OwnerHomeView currentUser={currentUser} halls={halls} bookings={bookings} posts={posts} offers={offers} onUpdateHall={handleUpdateHall} onOpenBookings={openBookings} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} onUpdatePostDescription={handleUpdatePostDescription} />;
+      return <OwnerHomeView currentUser={currentUser} halls={halls} bookings={bookings} posts={posts} offers={offers} onUpdateHall={handleUpdateHall} onOpenBookings={openBookings} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} onUpdatePostMetadata={handleUpdatePostMetadata} />;
     }
     if (currentUser.accountType === 'مزود خدمة' && currentTab === 'home') {
-      return <ServiceProviderHomeView currentUser={currentUser} serviceProviders={serviceProviders} bookings={bookings} posts={posts} offers={offers} onUpdateServiceProvider={() => {}} onOpenBookings={openBookings} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} onUpdatePostDescription={handleUpdatePostDescription} />;
+      return <ServiceProviderHomeView currentUser={currentUser} serviceProviders={serviceProviders} bookings={bookings} posts={posts} offers={offers} onUpdateServiceProvider={() => {}} onOpenBookings={openBookings} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} onUpdatePostMetadata={handleUpdatePostMetadata} />;
     }
     if (currentUser.accountType === 'مدير Admin' || currentUser.accountType === 'مدير') {
       return <AdminHomeView currentUser={currentUser} users={visibleAdminUsers} dataErrors={adminDataErrors} complaints={complaints} bookings={visibleAdminBookings} halls={halls} providers={serviceProviders} onOpenUser={setSelectedUserProfile} onOpenUserId={async(id)=>{const fallback=visibleAdminUsers.find(u=>u.id===id);try{const user=await fetchPublicUserProfile(id);if(user)setSelectedUserProfile(user);else if(fallback)setSelectedUserProfile(fallback);}catch{if(fallback)setSelectedUserProfile(fallback)}}} onBlockUserId={async(id)=>{if(!id||id.startsWith('demo-'))throw new Error('هذا العنصر تجريبي ولا يرتبط بحساب مسجل.');await setUserBlockedInFirestore(id,true,currentUser);}} onDeleteUser={handleDeleteAdminUser} onOpenHall={setSelectedHallForModal} onOpenProvider={setSelectedProviderForModal} onOpenBooking={setSelectedBookingForDetails} onUpdateComplaintStatus={handleUpdateComplaintStatus} onUpdateBookingStatus={handleUpdateBookingStatus} />;

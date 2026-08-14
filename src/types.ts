@@ -42,6 +42,7 @@ export interface ServiceProvider {
   coverImage: string;
   portfolio: string[];
   portfolioDescriptions?: Record<string,string>;
+  portfolioTitles?: Record<string,string>;
   features?: string[];
   description: string;
   phone: string;
@@ -122,6 +123,7 @@ export interface Booking {
   cancelledByName?: string;
   cancelledAt?: string;
   cancellationReason?: string;
+  rejectionReason?: string;
   paymentStatus?: 'بانتظار الدفع' | 'مدفوع تجريبياً' | 'مدفوع' | 'فشل' | 'مسترجع';
   paymentMethod?: 'زين كاش' | 'Qi Card' | 'الدفع لاحقاً';
   paymentReference?: string;

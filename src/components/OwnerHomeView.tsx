@@ -21,7 +21,7 @@ interface OwnerHomeViewProps {
   onOpenBookings: (filter: 'قيد المراجعة' | 'مقبول') => void;
   onCreatePost: (post: Omit<FeedPost, 'id' | 'createdAt' | 'likesCount' | 'sharesCount'>) => Promise<void> | void;
   onDeletePost?: (postId: string) => Promise<void> | void;
-  onUpdatePostDescription?: (postId:string,caption:string)=>Promise<void>|void;
+  onUpdatePostMetadata?: (postId:string,title:string,caption:string)=>Promise<void>|void;
 }
 
 const emptyHall = (user: UserProfile): Hall => ({
@@ -35,7 +35,7 @@ const FieldLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <label className="text-[11px] font-bold text-gray-700 block mb-1">{children}</label>
 );
 
-export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({ currentUser, halls, bookings, posts = [], offers = [], onUpdateHall, onOpenBookings, onCreatePost, onDeletePost, onUpdatePostDescription }) => {
+export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({ currentUser, halls, bookings, posts = [], offers = [], onUpdateHall, onOpenBookings, onCreatePost, onDeletePost, onUpdatePostMetadata }) => {
   const persistedHall = useMemo(
     () => halls.find((hall) => hall.ownerId === currentUser.id || (!!currentUser.ownedHallId && hall.id === currentUser.ownedHallId)),
     [halls, currentUser.id, currentUser.ownedHallId]
@@ -152,7 +152,7 @@ export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({ currentUser, halls
       </div>
 
       {ownPosts.length > 0 && <section className="bg-white p-5 rounded-3xl border space-y-3"><h2 className="font-bold">معرض أعمالي ({ownPosts.length})</h2><div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">{ownPosts.map(post=><button key={post.id} onClick={()=>setViewingPost(post)} className="border rounded-2xl overflow-hidden text-right hover:shadow-lg transition"><div className="h-40 bg-gray-100">{post.mediaType==='video'?<video src={post.mediaUrl} muted className="w-full h-full object-cover"/>:<img src={post.mediaUrl} className="w-full h-full object-cover"/>}</div><div className="p-3"><b className="text-xs">{post.title}</b><p className="text-[11px] text-gray-500 line-clamp-2">{post.caption||'بدون وصف'}</p></div></button>)}</div></section>}
-      {viewingPost&&<MediaViewer url={viewingPost.mediaUrl} type={viewingPost.mediaType} title={viewingPost.title} description={viewingPost.caption} onClose={()=>setViewingPost(null)} onPrevious={ownPosts.length>1?()=>{const i=ownPosts.findIndex(x=>x.id===viewingPost.id);setViewingPost(ownPosts[(i-1+ownPosts.length)%ownPosts.length])}:undefined} onNext={ownPosts.length>1?()=>{const i=ownPosts.findIndex(x=>x.id===viewingPost.id);setViewingPost(ownPosts[(i+1)%ownPosts.length])}:undefined} onSaveDescription={onUpdatePostDescription?async value=>{await onUpdatePostDescription(viewingPost.id,value);setViewingPost({...viewingPost,caption:value});setMessage('تم حفظ وصف العمل.');}:undefined} onDelete={onDeletePost?async()=>{await onDeletePost(viewingPost.id);setViewingPost(null);setMessage('تم حذف العمل بنجاح.');}:undefined}/>}
+      {viewingPost&&<MediaViewer url={viewingPost.mediaUrl} type={viewingPost.mediaType} title={viewingPost.title} description={viewingPost.caption} onClose={()=>setViewingPost(null)} onPrevious={ownPosts.length>1?()=>{const i=ownPosts.findIndex(x=>x.id===viewingPost.id);setViewingPost(ownPosts[(i-1+ownPosts.length)%ownPosts.length])}:undefined} onNext={ownPosts.length>1?()=>{const i=ownPosts.findIndex(x=>x.id===viewingPost.id);setViewingPost(ownPosts[(i+1)%ownPosts.length])}:undefined} onSaveMetadata={onUpdatePostMetadata?async value=>{await onUpdatePostMetadata(viewingPost.id,value.title,value.description);setViewingPost({...viewingPost,title:value.title,caption:value.description});setMessage('تم حفظ عنوان ووصف العمل.');}:undefined} onDelete={onDeletePost?async()=>{await onDeletePost(viewingPost.id);setViewingPost(null);setMessage('تم حذف العمل بنجاح.');}:undefined}/>}
       {bookingDialog && <BookingStatusSummaryDialog bookings={bookingDialog === 'accepted' ? acceptedBookings : pendingBookings} variant={bookingDialog} onClose={()=>setBookingDialog(null)} onManage={()=>{const filter=bookingDialog === 'accepted' ? 'مقبول' : 'قيد المراجعة';setBookingDialog(null);onOpenBookings(filter);}} />}
     </div>
   );

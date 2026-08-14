@@ -49,7 +49,7 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
         'status', 'updatedAt', 'cancelledAt', 'cancelledById', 'cancelledByRole',
         'cancelledByName', 'cancellationReason', 'paymentStatus', 'paymentMethod',
-        'paymentReference', 'paidAt'
+        'paymentReference', 'paidAt', 'rejectionReason'
       ]);
     }
 
@@ -153,7 +153,7 @@ service cloud.firestore {
       allow read: if true;
       allow create: if signedIn()
         && request.resource.data.keys().hasOnly([
-          'bookingId', 'itemId', 'date', 'startMinute', 'endMinute', 'status', 'createdAt'
+          'bookingId', 'itemId', 'date', 'startMinute', 'endMinute', 'status', 'requesterKey', 'createdAt'
         ])
         && request.resource.data.bookingId == bookingId
         && pendingStatus(request.resource.data.status)
@@ -162,6 +162,7 @@ service cloud.firestore {
         && request.resource.data.startMinute >= 0
         && request.resource.data.endMinute > request.resource.data.startMinute
         && request.resource.data.endMinute <= 2880
+        && request.resource.data.requesterKey is string
         && existsAfter(/databases/$(database)/documents/bookings/$(bookingId))
         && getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data.requesterId == request.auth.uid
         && pendingStatus(getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data.status)
@@ -169,6 +170,30 @@ service cloud.firestore {
         && request.resource.data.date == getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data.date;
       allow update: if false;
       allow delete: if canManageAvailability(bookingId);
+    }
+
+    // One private lock per requester and half-hour segment prevents a single
+    // account from creating duplicate or overlapping pending requests.
+    match /requesterBookingLocks/{lockId} {
+      // Transactions must be able to test a deterministic lock that does not
+      // exist yet. Individual gets are allowed to signed-in users, while list
+      // queries remain blocked so this private collection cannot be browsed.
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.requesterId == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'bookingId', 'requesterId', 'targetOwnerId', 'itemId', 'date', 'minute', 'createdAt'
+        ])
+        && existsAfter(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId))
+        && getAfter(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.requesterId == request.auth.uid
+        && pendingStatus(getAfter(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.status);
+      allow update: if false;
+      allow delete: if signedIn() && (
+        resource.data.requesterId == request.auth.uid
+        || resource.data.targetOwnerId == request.auth.uid
+        || isAdmin()
+      );
     }
 
     match /halls/{hallId} {

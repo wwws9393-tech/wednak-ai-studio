@@ -315,6 +315,7 @@ export interface PendingAvailabilityRange {
   bookingId: string;
   startMinute: number;
   endMinute: number;
+  requesterKey?: string;
 }
 
 export interface BookingAvailabilitySnapshot {
@@ -363,7 +364,7 @@ export function subscribeBookingAvailability(
       const startMinute = Number(data.startMinute);
       const endMinute = Number(data.endMinute);
       if (!pendingStatusValue(data.status) || !Number.isFinite(startMinute) || !Number.isFinite(endMinute) || endMinute <= startMinute) return [];
-      return [{ bookingId: String(data.bookingId || item.id), startMinute, endMinute }];
+      return [{ bookingId: String(data.bookingId || item.id), startMinute, endMinute, requesterKey: typeof data.requesterKey === 'string' ? data.requesterKey : undefined }];
     });
     pendingReady = true;
     emit();
@@ -382,6 +383,27 @@ export function subscribeBookingAvailability(
 
 function pendingStatusValue(status: unknown): boolean {
   return status === 'قيد المراجعة' || status === 'pending';
+}
+
+export function bookingRequesterKey(uid: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < uid.length; index += 1) {
+    hash ^= uid.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `rq_${(hash >>> 0).toString(36)}`;
+}
+
+function requesterLockRef(requesterId: string, itemId: string, date: string, minute: number) {
+  const safeItemId = itemId.replace(/[^a-zA-Z0-9_-]/g, '_');
+  return doc(db, 'requesterBookingLocks', `${requesterId}_${safeItemId}_${date}_${minute}`);
+}
+
+function requesterLockRefsForBooking(booking: Pick<Booking, 'requesterId' | 'customerId' | 'itemId' | 'date' | 'timeSlot' | 'startTime' | 'endTime'>) {
+  const requesterId = booking.requesterId || booking.customerId;
+  const range = getSlotTimeRange(booking.timeSlot, booking.startTime, booking.endTime);
+  return lockSegments(booking.itemId, booking.date, range.startMins, range.endMins)
+    .map((segment) => requesterLockRef(requesterId, booking.itemId, booking.date, segment.minute));
 }
 
 export async function assertBookingSelectionAvailable(
@@ -468,9 +490,14 @@ export async function createBookingInFirestore(bookingData: {
   try {
     await runTransaction(db, async (tx) => {
       const lockRefs = segments.map((segment) => doc(db, 'bookingLocks', segment.id));
+      const requestLockRefs = segments.map((segment) => requesterLockRef(user.uid, bookingData.itemId, bookingData.date, segment.minute));
       const lockSnaps = await Promise.all(lockRefs.map((lockRef) => tx.get(lockRef)));
+      const requestLockSnaps = await Promise.all(requestLockRefs.map((lockRef) => tx.get(lockRef)));
       if (lockSnaps.some((lockSnap) => lockSnap.exists())) {
         throw new Error('هذا الموعد محجوز بحجز مقبول. يرجى اختيار وقت آخر.');
+      }
+      if (requestLockSnaps.some((lockSnap) => lockSnap.exists())) {
+        throw new Error('لديك طلب قيد المراجعة لنفس الموعد. انتظر قرار صاحب القاعة أو الخدمة.');
       }
       tx.set(ref, firestoreSafeBooking);
       tx.set(availabilityRef, {
@@ -480,18 +507,46 @@ export async function createBookingInFirestore(bookingData: {
         startMinute: range.startMins,
         endMinute: range.endMins,
         status: 'قيد المراجعة',
+        requesterKey: bookingRequesterKey(user.uid),
         createdAt: now,
       });
+      requestLockRefs.forEach((lockRef, index) => tx.set(lockRef, {
+        bookingId: ref.id,
+        requesterId: user.uid,
+        targetOwnerId: bookingData.ownerId,
+        itemId: bookingData.itemId,
+        date: bookingData.date,
+        minute: segments[index].minute,
+        createdAt: now,
+      }));
     });
     return booking;
   }
   catch (err) { return handleFirestoreError(err, OperationType.CREATE, `bookings/${ref.id}`); }
 }
 
-export async function acceptBookingInFirestore(bookingId: string): Promise<void> {
+export async function acceptBookingInFirestore(bookingId: string): Promise<string[]> {
   const user = await requireFirebaseUser();
   const bookingRef = doc(db, 'bookings', bookingId);
   try {
+    const initialSnap = await getDoc(bookingRef);
+    if (!initialSnap.exists()) throw new Error('الحجز غير موجود.');
+    const initialBooking = initialSnap.data() as Booking;
+    const initialRange = getSlotTimeRange(initialBooking.timeSlot, initialBooking.startTime, initialBooking.endTime);
+    const availabilitySnap = await getDocs(query(
+      collection(db, 'bookingAvailability'),
+      where('itemId', '==', initialBooking.itemId),
+      where('date', '==', initialBooking.date),
+    ));
+    const candidateIds = Array.from(new Set(availabilitySnap.docs.flatMap((availabilityDoc) => {
+      const data = availabilityDoc.data();
+      const startMinute = Number(data.startMinute);
+      const endMinute = Number(data.endMinute);
+      const overlaps = Number.isFinite(startMinute) && Number.isFinite(endMinute)
+        && startMinute < initialRange.endMins && endMinute > initialRange.startMins;
+      return overlaps && availabilityDoc.id !== bookingId ? [String(data.bookingId || availabilityDoc.id)] : [];
+    })));
+    let rejectedIds: string[] = [];
     await runTransaction(db, async (tx) => {
       const snap = await tx.get(bookingRef);
       if (!snap.exists()) throw new Error('الحجز غير موجود.');
@@ -508,7 +563,26 @@ export async function acceptBookingInFirestore(bookingId: string): Promise<void>
       const segments = lockSegments(booking.itemId, booking.date, range.startMins, range.endMins);
       const lockRefs = segments.map((s) => doc(db, 'bookingLocks', s.id));
       const lockSnaps = await Promise.all(lockRefs.map((lockRef) => tx.get(lockRef)));
+      const competitorRefs = candidateIds.map((candidateId) => doc(db, 'bookings', candidateId));
+      const competitorSnaps = await Promise.all(competitorRefs.map((competitorRef) => tx.get(competitorRef)));
       if (lockSnaps.some((lockSnap) => lockSnap.exists())) throw new Error('الموعد أصبح محجوزاً بواسطة طلب آخر.');
+      const competitors = competitorSnaps.flatMap((competitorSnap, index) => {
+        if (!competitorSnap.exists()) return [];
+        const candidate = competitorSnap.data() as Booking;
+        if (!pendingStatusValue(candidate.status) || candidate.itemId !== booking.itemId || candidate.date !== booking.date) return [];
+        const candidateRange = getSlotTimeRange(candidate.timeSlot, candidate.startTime, candidate.endTime);
+        return candidateRange.startMins < range.endMins && candidateRange.endMins > range.startMins
+          ? [{ booking: candidate, ref: competitorRefs[index] }]
+          : [];
+      });
+      rejectedIds = competitors.map((item) => item.booking.id || item.ref.id);
+      const selectedRequestLockRefs = requesterLockRefsForBooking(booking);
+      const selectedRequestLockSnaps = await Promise.all(selectedRequestLockRefs.map((lockRef) => tx.get(lockRef)));
+      const competitorRequestLocks = competitors.map(({ booking: competitor }) => {
+        const refs = requesterLockRefsForBooking(competitor);
+        return { refs, snapsPromise: Promise.all(refs.map((lockRef) => tx.get(lockRef))) };
+      });
+      const competitorRequestLockSnaps = await Promise.all(competitorRequestLocks.map((item) => item.snapsPromise));
       segments.forEach((segment, index) => tx.set(lockRefs[index], {
         bookingId,
         itemId: booking.itemId,
@@ -517,10 +591,25 @@ export async function acceptBookingInFirestore(bookingId: string): Promise<void>
         targetOwnerId: booking.targetOwnerId,
         createdAt: new Date().toISOString(),
       }));
+      selectedRequestLockSnaps.forEach((requestLockSnap, index) => {
+        if (requestLockSnap.exists()) tx.delete(selectedRequestLockRefs[index]);
+      });
       tx.delete(doc(db, 'bookingAvailability', bookingId));
       tx.update(bookingRef, { status: 'مقبول', updatedAt: new Date().toISOString() });
+      competitors.forEach(({ ref }, competitorIndex) => {
+        competitorRequestLockSnaps[competitorIndex].forEach((requestLockSnap, lockIndex) => {
+          if (requestLockSnap.exists()) tx.delete(competitorRequestLocks[competitorIndex].refs[lockIndex]);
+        });
+        tx.delete(doc(db, 'bookingAvailability', ref.id));
+        tx.update(ref, {
+          status: 'مرفوض',
+          updatedAt: new Date().toISOString(),
+          rejectionReason: 'تم قبول طلب آخر لنفس الموعد.',
+        });
+      });
     });
-  } catch (err) { handleFirestoreError(err, OperationType.UPDATE, `bookings/${bookingId}`); }
+    return rejectedIds;
+  } catch (err) { return handleFirestoreError(err, OperationType.UPDATE, `bookings/${bookingId}`); }
 }
 
 export async function rejectBookingInFirestore(bookingId: string): Promise<void> {
@@ -535,6 +624,11 @@ export async function rejectBookingInFirestore(bookingId: string): Promise<void>
       const role=userSnap.exists()?(userSnap.data() as UserProfile).accountType:'';
       if (booking.targetOwnerId !== user.uid && role!=='مدير' && role!=='مدير Admin') throw new Error('ليس لديك صلاحية رفض هذا الحجز.');
       if (booking.status !== 'قيد المراجعة' && booking.status !== 'pending') throw new Error('تم تغيير حالة الحجز سابقاً.');
+      const requestLockRefs = requesterLockRefsForBooking(booking);
+      const requestLockSnaps = await Promise.all(requestLockRefs.map((lockRef) => tx.get(lockRef)));
+      requestLockSnaps.forEach((requestLockSnap, index) => {
+        if (requestLockSnap.exists()) tx.delete(requestLockRefs[index]);
+      });
       tx.delete(doc(db, 'bookingAvailability', bookingId));
       tx.update(bookingRef, { status: 'مرفوض', updatedAt: new Date().toISOString() });
     });
@@ -554,8 +648,13 @@ export async function cancelBookingInFirestore(bookingId: string): Promise<void>
       const segments = lockSegments(booking.itemId, booking.date, range.startMins, range.endMins);
       const lockRefs = segments.map((segment) => doc(db, 'bookingLocks', segment.id));
       const lockSnaps = await Promise.all(lockRefs.map((lockRef) => tx.get(lockRef)));
+      const requestLockRefs = requesterLockRefsForBooking(booking);
+      const requestLockSnaps = await Promise.all(requestLockRefs.map((lockRef) => tx.get(lockRef)));
       lockSnaps.forEach((lockSnap, index) => {
         if (lockSnap.exists() && lockSnap.data().bookingId === bookingId) tx.delete(lockRefs[index]);
+      });
+      requestLockSnaps.forEach((requestLockSnap, index) => {
+        if (requestLockSnap.exists()) tx.delete(requestLockRefs[index]);
       });
       tx.delete(doc(db, 'bookingAvailability', bookingId));
       tx.update(bookingRef, { status: 'ملغي', updatedAt: new Date().toISOString() });
@@ -563,13 +662,14 @@ export async function cancelBookingInFirestore(bookingId: string): Promise<void>
   } catch (err) { handleFirestoreError(err, OperationType.UPDATE, `bookings/${bookingId}`); }
 }
 
-export async function updateBookingStatusInFirestore(bookingId: string, status: BookingStatus): Promise<void> {
+export async function updateBookingStatusInFirestore(bookingId: string, status: BookingStatus): Promise<string[]> {
   if (status === 'مقبول' || status === 'accepted') return acceptBookingInFirestore(bookingId);
-  if (status === 'مرفوض' || status === 'rejected') return rejectBookingInFirestore(bookingId);
-  if (status === 'ملغي' || status === 'cancelled') return cancelBookingInFirestore(bookingId);
+  if (status === 'مرفوض' || status === 'rejected') { await rejectBookingInFirestore(bookingId); return []; }
+  if (status === 'ملغي' || status === 'cancelled') { await cancelBookingInFirestore(bookingId); return []; }
   await requireFirebaseUser();
   try { await updateDoc(doc(db, 'bookings', bookingId), { status, updatedAt: new Date().toISOString() }); }
   catch (err) { handleFirestoreError(err, OperationType.UPDATE, `bookings/${bookingId}`); }
+  return [];
 }
 
 export function subscribeNotificationReadIds(
@@ -742,6 +842,21 @@ export async function updatePostDescriptionInFirestore(postId:string,caption:str
   if(!snap.exists())throw new Error('العمل غير موجود.');
   if((snap.data() as FeedPost).authorId!==user.uid)throw new Error('لا يمكنك تعديل عمل لا تملكه.');
   await updateDoc(ref,{caption:caption.trim(),updatedAt:new Date().toISOString()});
+}
+
+export async function updatePostMetadataInFirestore(postId: string, title: string, caption: string): Promise<void> {
+  const user = await requireFirebaseUser();
+  const ref = doc(db, 'posts', postId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error('العمل غير موجود.');
+  if ((snap.data() as FeedPost).authorId !== user.uid) throw new Error('لا يمكنك تعديل عمل لا تملكه.');
+  const cleanTitle = title.trim();
+  if (!cleanTitle) throw new Error('عنوان العمل مطلوب.');
+  try {
+    await updateDoc(ref, { title: cleanTitle, caption: caption.trim(), updatedAt: new Date().toISOString() });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `posts/${postId}`);
+  }
 }
 
 export async function deletePostInFirestore(postId: string): Promise<void> {
