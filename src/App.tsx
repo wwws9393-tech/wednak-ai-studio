@@ -107,6 +107,7 @@ export function App() {
   const [selectedCity, setSelectedCity] = useState<string>('جميع المحافظات');
   const [currentTab, setCurrentTab] = useState<string>('home');
   const [bookingsFilter, setBookingsFilter] = useState<string>('الكل');
+  const [bookingsScope, setBookingsScope] = useState<'all' | 'incoming' | 'outgoing'>('all');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<UserProfile>(GUEST_ANONYMOUS_USER);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
@@ -317,20 +318,60 @@ export function App() {
     customerName: string; customerPhone: string; customerId: string; ownerId?: string;
   }) => {
     const booking = await createBookingInFirestore(bookingData);
-    await dispatchBookingPush(booking.id, 'created');
+    void dispatchBookingPush(booking.id, 'created').catch((error) => {
+      console.warn('Booking notification will retry later:', error);
+    });
   };
   const handleUpdateBookingStatus = async (bookingId: string, newStatus: BookingStatus) => {
-    const autoRejectedIds = await updateBookingStatusInFirestore(bookingId, newStatus);
-    // Keep the visible cards in sync immediately; the Firestore listener remains
-    // the source of truth and will reconcile the same value afterwards.
+    const previousById = new Map(bookings.map((booking) => [booking.id, booking]));
+    const selected = previousById.get(bookingId);
+    const toMinutes = (value?: string) => {
+      const [hour, minute] = (value || '00:00').slice(0, 5).split(':').map(Number);
+      return (Number.isFinite(hour) ? hour : 0) * 60 + (Number.isFinite(minute) ? minute : 0);
+    };
+    const rangeOf = (booking: Booking) => {
+      const start = toMinutes(booking.startTime);
+      let end = toMinutes(booking.endTime);
+      if (!booking.startTime || !booking.endTime) return null;
+      if (end <= start) end += 1440;
+      return { start, end };
+    };
+    const selectedRange = selected ? rangeOf(selected) : null;
+    const optimisticRejectedIds = newStatus === 'مقبول' && selected && selectedRange
+      ? bookings.filter((booking) => {
+          if (booking.id === bookingId || booking.itemId !== selected.itemId || booking.date !== selected.date) return false;
+          if (booking.status !== 'قيد المراجعة' && booking.status !== 'pending') return false;
+          const range = rangeOf(booking);
+          return !!range && range.start < selectedRange.end && range.end > selectedRange.start;
+        }).map((booking) => booking.id)
+      : [];
+    const optimisticIds = new Set([bookingId, ...optimisticRejectedIds]);
+    const optimisticTimestamp = new Date().toISOString();
+
     setBookings((current) => current.map((booking) => (
       booking.id === bookingId
-        ? { ...booking, status: newStatus, updatedAt: new Date().toISOString() }
-        : autoRejectedIds.includes(booking.id)
-          ? { ...booking, status: 'مرفوض', updatedAt: new Date().toISOString() }
-        : booking
+        ? { ...booking, status: newStatus, updatedAt: optimisticTimestamp }
+        : optimisticRejectedIds.includes(booking.id)
+          ? { ...booking, status: 'مرفوض', updatedAt: optimisticTimestamp, rejectionReason: 'تم قبول طلب آخر لنفس الموعد.' }
+          : booking
     )));
-    await Promise.all([bookingId, ...autoRejectedIds].map((id) => dispatchBookingPush(id, 'updated')));
+
+    try {
+      const autoRejectedIds = await updateBookingStatusInFirestore(bookingId, newStatus);
+      setBookings((current) => current.map((booking) => (
+        booking.id === bookingId
+          ? { ...booking, status: newStatus, updatedAt: new Date().toISOString() }
+          : autoRejectedIds.includes(booking.id)
+            ? { ...booking, status: 'مرفوض', updatedAt: new Date().toISOString(), rejectionReason: 'تم قبول طلب آخر لنفس الموعد.' }
+            : booking
+      )));
+      void Promise.all([bookingId, ...autoRejectedIds].map((id) => dispatchBookingPush(id, 'updated'))).catch((error) => {
+        console.warn('Booking push dispatch delayed:', error);
+      });
+    } catch (error) {
+      setBookings((current) => current.map((booking) => optimisticIds.has(booking.id) && previousById.has(booking.id) ? previousById.get(booking.id)! : booking));
+      throw error;
+    }
   };
   const resolveBookingRequester = async (booking: Booking): Promise<UserProfile | null> => {
     const requesterId = booking.requesterId || booking.customerId;
@@ -365,10 +406,19 @@ export function App() {
   const handleUpdatePostMetadata = async (postId:string,title:string,caption:string) => { await updatePostMetadataInFirestore(postId,title,caption); };
   const openBookings = (filter: 'الكل' | 'قيد المراجعة' | 'مقبول' = 'الكل') => {
     setBookingsFilter(filter);
+    setBookingsScope(currentUser.accountType === 'صاحب قاعة' || currentUser.accountType === 'مزود خدمة' ? 'incoming' : 'all');
+    setCurrentTab('bookings');
+  };
+  const openCustomerBookings = () => {
+    setBookingsFilter('الكل');
+    setBookingsScope('outgoing');
     setCurrentTab('bookings');
   };
   const selectMainTab = (tab: string) => {
-    if (tab === 'bookings') setBookingsFilter('الكل');
+    if (tab === 'bookings') {
+      setBookingsFilter('الكل');
+      setBookingsScope(currentUser.accountType === 'صاحب قاعة' || currentUser.accountType === 'مزود خدمة' ? 'incoming' : 'all');
+    }
     setCurrentTab(tab);
   };
 
@@ -392,7 +442,7 @@ export function App() {
       return <OwnerHomeView currentUser={currentUser} halls={halls} bookings={bookings} posts={posts} offers={offers} onUpdateHall={handleUpdateHall} onOpenBookings={openBookings} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} onUpdatePostMetadata={handleUpdatePostMetadata} />;
     }
     if (currentUser.accountType === 'مزود خدمة' && currentTab === 'home') {
-      return <ServiceProviderHomeView currentUser={currentUser} serviceProviders={serviceProviders} bookings={bookings} posts={posts} offers={offers} onUpdateServiceProvider={() => {}} onOpenBookings={openBookings} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} onUpdatePostMetadata={handleUpdatePostMetadata} />;
+      return <ServiceProviderHomeView currentUser={currentUser} serviceProviders={serviceProviders} bookings={bookings} posts={posts} offers={offers} onUpdateServiceProvider={() => {}} onOpenBookings={openBookings} onOpenCustomerBookings={openCustomerBookings} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} onUpdatePostMetadata={handleUpdatePostMetadata} />;
     }
     if (currentUser.accountType === 'مدير Admin' || currentUser.accountType === 'مدير') {
       return <AdminHomeView currentUser={currentUser} users={visibleAdminUsers} dataErrors={adminDataErrors} complaints={complaints} bookings={visibleAdminBookings} halls={halls} providers={serviceProviders} onOpenUser={setSelectedUserProfile} onOpenUserId={async(id)=>{const fallback=visibleAdminUsers.find(u=>u.id===id);try{const user=await fetchPublicUserProfile(id);if(user)setSelectedUserProfile(user);else if(fallback)setSelectedUserProfile(fallback);}catch{if(fallback)setSelectedUserProfile(fallback)}}} onBlockUserId={async(id)=>{if(!id||id.startsWith('demo-'))throw new Error('هذا العنصر تجريبي ولا يرتبط بحساب مسجل.');await setUserBlockedInFirestore(id,true,currentUser);}} onDeleteUser={handleDeleteAdminUser} onOpenHall={setSelectedHallForModal} onOpenProvider={setSelectedProviderForModal} onOpenBooking={setSelectedBookingForDetails} onUpdateComplaintStatus={handleUpdateComplaintStatus} onUpdateBookingStatus={handleUpdateBookingStatus} />;
@@ -407,7 +457,7 @@ export function App() {
         </div>;
       case 'search': return <SearchView halls={halls} serviceProviders={serviceProviders} selectedCity={selectedCity} onSelectCity={setSelectedCity} cities={CITIES} favoriteIds={validFavoriteIds} onToggleFavorite={handleToggleFavorite} onSelectHall={setSelectedHallForModal} onBookHall={(h)=>setBookingItemForModal({type:'hall',data:h})} onSelectProvider={setSelectedProviderForModal} onBookProvider={(sp)=>setBookingItemForModal({type:'provider',data:sp})} currentUser={currentUser}/>;
       case 'explore': return <ExploreView posts={filteredPosts} offers={offers} halls={halls} serviceProviders={serviceProviders} likedPostIds={likedPostIds} favoriteIds={validFavoriteIds} onTogglePostLike={handleTogglePostLike} onToggleFavorite={handleToggleFavorite} onSelectHall={setSelectedHallForModal} onBookHall={(h)=>setBookingItemForModal({type:'hall',data:h})} onSelectProvider={setSelectedProviderForModal} onBookProvider={(sp)=>setBookingItemForModal({type:'provider',data:sp})} selectedCity={selectedCity} onSelectCity={setSelectedCity} cities={CITIES} currentUser={currentUser}/>;
-      case 'bookings': return <BookingsView bookings={bookingsWithCurrentImages} accountType={currentUser.accountType} initialFilter={bookingsFilter} onUpdateBookingStatus={handleUpdateBookingStatus} onLoadRequester={resolveBookingRequester} onOpenRequester={openBookingRequester} onSelectBooking={setSelectedBookingForDetails} onSelectTab={setCurrentTab}/>;
+      case 'bookings': return <BookingsView bookings={bookingsWithCurrentImages} currentUserId={currentUser.id} scope={bookingsScope} accountType={currentUser.accountType} initialFilter={bookingsFilter} onUpdateBookingStatus={handleUpdateBookingStatus} onLoadRequester={resolveBookingRequester} onOpenRequester={openBookingRequester} onSelectBooking={setSelectedBookingForDetails} onSelectTab={setCurrentTab}/>;
       case 'favorites': return <FavoritesView favoriteIds={validFavoriteIds} halls={halls} serviceProviders={serviceProviders} onToggleFavorite={handleToggleFavorite} onSelectHall={setSelectedHallForModal} onBookHall={(h)=>setBookingItemForModal({type:'hall',data:h})} onSelectProvider={setSelectedProviderForModal} onBookProvider={(sp)=>setBookingItemForModal({type:'provider',data:sp})} onSelectTab={setCurrentTab}/>;
       case 'notifications': return <NotificationsView notifications={notifications} onMarkAsRead={markNotificationRead} onMarkAllAsRead={markAllNotificationsRead} onOpenNotificationTarget={(n)=>{ if(n.targetBookingId){ const booking=bookings.find((b)=>b.id===n.targetBookingId); if(booking){setSelectedBookingForDetails(booking); return;} } if(n.type==='booking') setCurrentTab('bookings'); else if(n.type==='offer') setCurrentTab('explore'); }}/>;
       case 'complaints': return <ComplaintsView complaints={complaints} currentUser={currentUser} onSubmitComplaint={handleCreateComplaint} isAdmin={false} onUpdateComplaintStatus={handleUpdateComplaintStatus}/>;

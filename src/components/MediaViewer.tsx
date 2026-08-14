@@ -28,14 +28,25 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({ url, type, title, desc
   const [offset, setOffset] = useState<Point>({ x: 0, y: 0 });
   const [isZooming, setIsZooming] = useState(false);
   const gesture = useRef<GestureState>({});
+  const scaleRef = useRef(1);
+  const offsetRef = useRef<Point>({ x: 0, y: 0 });
   const canEdit = !!onSaveMetadata || !!onSaveDescription;
   const descriptionCanExpand = descriptionText.length > 95 || descriptionText.split('\n').length > 2;
 
   const resetZoom = () => {
+    scaleRef.current = 1;
+    offsetRef.current = { x: 0, y: 0 };
     setScale(1);
     setOffset({ x: 0, y: 0 });
     setIsZooming(false);
     gesture.current = {};
+  };
+
+  const applyZoom = (nextScale: number, nextOffset: Point) => {
+    scaleRef.current = nextScale;
+    offsetRef.current = nextOffset;
+    setScale(nextScale);
+    setOffset(nextOffset);
   };
 
   useEffect(() => {
@@ -68,12 +79,13 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({ url, type, title, desc
     if (type === 'image' && event.touches.length === 2) {
       const first = event.touches[0];
       const second = event.touches[1];
-      gesture.current = { distance: touchDistance(first, second), midpoint: touchMidpoint(first, second), offset: { ...offset }, scale, pinching: true };
+      gesture.current = { distance: touchDistance(first, second), midpoint: touchMidpoint(first, second), offset: { ...offsetRef.current }, scale: scaleRef.current, pinching: true };
       setIsZooming(true);
       return;
     }
     const touch = event.touches[0];
-    gesture.current = { start: { x: touch.clientX, y: touch.clientY }, offset: { ...offset } };
+    gesture.current = { start: { x: touch.clientX, y: touch.clientY }, offset: { ...offsetRef.current }, scale: scaleRef.current, pinching: false };
+    if (type === 'image' && scaleRef.current > 1) setIsZooming(true);
   };
 
   const touchMove = (event: React.TouchEvent) => {
@@ -85,13 +97,33 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({ url, type, title, desc
       const midpoint = touchMidpoint(first, second);
       const nextScale = Math.min(4, Math.max(1, (gesture.current.scale || 1) * touchDistance(first, second) / gesture.current.distance));
       const baseOffset = gesture.current.offset || { x: 0, y: 0 };
-      setScale(nextScale);
-      setOffset({ x: baseOffset.x + midpoint.x - gesture.current.midpoint.x, y: baseOffset.y + midpoint.y - gesture.current.midpoint.y });
+      applyZoom(nextScale, { x: baseOffset.x + midpoint.x - gesture.current.midpoint.x, y: baseOffset.y + midpoint.y - gesture.current.midpoint.y });
+      return;
+    }
+    if (event.touches.length === 1 && scaleRef.current > 1 && gesture.current.start) {
+      event.preventDefault();
+      const touch = event.touches[0];
+      const baseOffset = gesture.current.offset || offsetRef.current;
+      applyZoom(scaleRef.current, {
+        x: baseOffset.x + touch.clientX - gesture.current.start.x,
+        y: baseOffset.y + touch.clientY - gesture.current.start.y,
+      });
     }
   };
 
   const touchEnd = (event: React.TouchEvent) => {
-    if (gesture.current.pinching || isZooming || scale > 1) {
+    if (type === 'image' && event.touches.length === 1 && scaleRef.current > 1) {
+      const remaining = event.touches[0];
+      gesture.current = {
+        start: { x: remaining.clientX, y: remaining.clientY },
+        offset: { ...offsetRef.current },
+        scale: scaleRef.current,
+        pinching: false,
+      };
+      setIsZooming(true);
+      return;
+    }
+    if (type === 'image' && event.touches.length === 0 && (gesture.current.pinching || isZooming || scaleRef.current > 1)) {
       resetZoom();
       return;
     }

@@ -72,14 +72,14 @@ export const BookingSchedule: React.FC<{ bookings: Booking[] }> = ({ bookings })
               <b className="text-sm text-amber-100 block">حالة المواعيد والأوقات</b>
               <span className="text-[9px] text-emerald-100">الأحمر مقبول، البرتقالي قيد المراجعة</span>
             </div>
-            <input type="date" min={today} value={date} onChange={(event) => setDate(event.target.value)} className="border border-amber-300 rounded-xl px-2 py-2 text-xs bg-white text-emerald-950" />
+            <input type="date" min={today} value={date} onChange={(event) => setDate(event.target.value)} className="border border-amber-300 rounded-xl px-2 py-2 text-xs bg-amber-400 text-emerald-950 font-black shadow-sm" />
           </div>
           <div className="grid sm:grid-cols-3 gap-2">
             {SLOTS.map((slot) => {
               const booked = accepted.some((booking) => overlapsSlot(booking, slot));
               const underReview = !booked && pending.some((booking) => overlapsSlot(booking, slot));
               return (
-                <div key={slot.name} className={`p-3 rounded-xl border ${booked ? 'bg-rose-50 border-rose-300' : underReview ? 'bg-amber-50 border-amber-300' : 'bg-white border-emerald-300'}`}>
+                <div key={slot.name} className={`p-3 rounded-xl border shadow-sm ${booked ? 'bg-rose-50 border-rose-300' : underReview ? 'bg-amber-100 border-amber-300' : 'bg-amber-400 border-amber-300 text-emerald-950'}`}>
                   <b className="text-xs block">{slot.name}</b>
                   <span className="text-[10px]">{slot.start} - {slot.end}</span>
                   <span className={`block mt-1 text-[10px] font-bold ${booked ? 'text-rose-700' : underReview ? 'text-amber-700' : 'text-emerald-700'}`}>

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Calendar, Clock, Users, Phone, User, FileText, CheckCircle, AlertTriangle, ShieldCheck, AlertCircle, KeyRound, ArrowRight, CreditCard, WalletCards } from 'lucide-react';
+import { X, Calendar, Clock, Users, Phone, User, FileText, CheckCircle, AlertTriangle, ShieldCheck, AlertCircle, KeyRound, ArrowRight, CreditCard, WalletCards, Heart } from 'lucide-react';
 import { ConfirmationResult, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 import { Hall, ServiceProvider, UserProfile, Booking } from '../types';
 import {
@@ -132,6 +132,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
   const [pendingRanges, setPendingRanges] = useState<PendingAvailabilityRange[]>([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [successVariant, setSuccessVariant] = useState<'available' | 'competing' | null>(null);
   const confirmationRef = useRef<ConfirmationResult | null>(null);
   const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
   const recaptchaContainerRef = useRef<HTMLDivElement | null>(null);
@@ -141,7 +142,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
     if (!isOpen) return;
     setCustomerName(currentUser.isGuest ? '' : currentUser.name || '');
     setCustomerPhone(currentUser.isGuest ? '' : currentUser.phone || '');
-    setGuestStep('details'); setOtpCode(''); setErrorMsg('');
+    setGuestStep('details'); setOtpCode(''); setErrorMsg(''); setSuccessVariant(null);
   }, [isOpen, currentUser.id, currentUser.isGuest, currentUser.name, currentUser.phone]);
 
   useEffect(() => {
@@ -358,18 +359,51 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
     finally { setIsLoading(false); }
   };
 
+  const completeBooking = async () => {
+    if (!bookingUser || bookingSelectionBlocked || isLoading) return;
+    const competingWithPendingRequest = selectedPending && !selectedOwnPending;
+    setIsLoading(true);
+    setErrorMsg('');
+    try {
+      await submitBooking(bookingUser);
+      setSuccessVariant(competingWithPendingRequest ? 'competing' : 'available');
+      window.setTimeout(onClose, 2400);
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : 'تعذر إرسال الحجز. حاول مرة أخرى.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div
       className="wednak-booking-overlay fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/60 p-2 backdrop-blur-sm sm:p-3"
       onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
     >
       <div
-        className="wednak-booking-sheet max-h-[calc(100dvh-1rem)] w-full max-w-lg min-w-0 overflow-x-hidden overflow-y-auto rounded-3xl bg-white shadow-2xl sm:max-h-[92vh]"
+        className="wednak-booking-sheet relative max-h-[calc(100dvh-1rem)] w-full max-w-lg min-w-0 overflow-x-hidden overflow-y-auto rounded-3xl bg-white shadow-2xl sm:max-h-[92vh]"
         role="dialog"
         aria-modal="true"
         aria-label="طلب حجز جديد"
         onClick={(event) => event.stopPropagation()}
       >
+        {successVariant && <div className="absolute inset-0 z-50 grid place-items-center bg-slate-950/65 p-5 backdrop-blur-sm" role="status" aria-live="polite">
+          <div className="w-full max-w-sm overflow-hidden rounded-[2rem] border border-amber-300/60 bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-800 p-5 text-center text-white shadow-2xl">
+            <div className="flex items-center justify-between">
+              <WednakLogo className="h-11 w-11" />
+              <span className="rounded-full bg-amber-400 px-3 py-1 text-[10px] font-black text-emerald-950">ويدنك وياكم</span>
+            </div>
+            <div className="mx-auto mt-3 flex w-fit items-end justify-center gap-2 rounded-full bg-white/10 px-5 py-3 shadow-inner">
+              <span className="text-5xl drop-shadow-lg" aria-hidden="true">🤵🏻‍♂️</span>
+              <Heart className="mb-2 h-6 w-6 fill-amber-300 text-amber-300" aria-hidden="true" />
+              <span className="text-5xl drop-shadow-lg" aria-hidden="true">👰🏻‍♀️</span>
+            </div>
+            <CheckCircle className="mx-auto mt-4 h-8 w-8 text-amber-300" />
+            <h3 className="mt-2 text-lg font-black text-white">تم إرسال حجزك بنجاح</h3>
+            {successVariant === 'competing' && <p className="mx-auto mt-2 rounded-2xl border border-amber-300/50 bg-amber-300 px-3 py-2 text-xs font-black text-emerald-950">أنت تنافس على موعد قيد المراجعة</p>}
+            <p className="mt-2 text-[10px] font-bold text-emerald-100">يمكنك متابعة حالة الطلب من حجوزاتي</p>
+          </div>
+        </div>}
         <div id="guest-booking-recaptcha" />
         <div className="p-4 bg-gradient-to-r from-emerald-800 to-emerald-900 text-white flex items-center justify-between rounded-t-3xl">
           <div className="flex gap-2"><WednakLogo className="w-10 h-10"/><div><h2 className="text-base font-bold">{currentUser.isGuest ? 'أكمل حجزك كضيف' : 'طلب حجز جديد'}</h2><p className="text-xs text-amber-200">{item.data.name}</p></div></div>
@@ -483,7 +517,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
           <div><label className="text-xs font-bold"><FileText className="inline w-4 h-4"/> ملاحظات</label><textarea value={notes} onChange={(e)=>setNotes(e.target.value)} className="w-full px-3 py-2 border rounded-xl text-xs h-16"/></div>
           <div className="p-2.5 bg-gray-50 border rounded-xl text-[11px] text-gray-600 flex gap-2"><ShieldCheck className="w-4 h-4 text-emerald-600"/>{currentUser.isGuest?'سنرسل OTP حقيقي ونربط الحجز بهويتك.':'الحجز خاص بك وبالطرف المستلم فقط.'}</div>
           <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className="px-4 py-2 text-xs">إلغاء</button><button disabled={isLoading||isSelfBooking||bookingSelectionBlocked} aria-disabled={isLoading||isSelfBooking||bookingSelectionBlocked} className="px-5 py-2 bg-emerald-700 text-white rounded-xl text-xs font-bold flex gap-1 transition-opacity disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-35"><WalletCards className="w-4 h-4"/>{selectedOwnPending?'قيد المراجعة':isLoading?'جاري التنفيذ...':currentUser.isGuest?'إرسال OTP':'دفع العربون'}</button></div>
-        </form> : guestStep==='otp_form' ? <form onSubmit={verifyGuestOtp} className="p-5 space-y-4"><div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs"><KeyRound className="inline w-4 h-4"/> أدخل الرمز الحقيقي المرسل إلى {customerPhone}</div><input value={otpCode} onChange={(e)=>setOtpCode(e.target.value)} inputMode="numeric" maxLength={6} className="w-full px-3 py-2 border rounded-xl text-center text-xl tracking-widest" placeholder="000000"/><div className="flex justify-between"><button type="button" onClick={()=>setGuestStep('details')} className="text-xs flex gap-1"><ArrowRight className="w-4 h-4"/>تغيير الرقم</button><button disabled={isLoading} className="px-5 py-2 bg-emerald-800 text-white rounded-xl text-xs font-bold">{isLoading?'جاري التحقق...':'الانتقال للدفع'}</button></div></form> : <div className="p-5 space-y-4"><div className="text-center"><WalletCards className="w-10 h-10 mx-auto text-emerald-700"/><h3 className="font-black mt-2">دفع العربون</h3><p className="text-2xl font-black text-amber-700">{depositAmount.toLocaleString()} د.ع</p></div><div className="grid grid-cols-2 gap-3">{(['زين كاش','Qi Card'] as const).map(method=><button key={method} onClick={()=>setPaymentMethod(method)} className={`p-4 border-2 rounded-2xl font-bold text-sm ${paymentMethod===method?'border-emerald-700 bg-emerald-50':'border-gray-200'}`}><CreditCard className="w-5 h-5 mx-auto mb-2"/>{method}</button>)}</div><div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900">سيُسجل الطلب بانتظار الدفع إلى أن يتم ربط حساب التاجر الرسمي ببوابة {paymentMethod}. لن نعتبر العربون مدفوعاً دون تأكيد حقيقي من بوابة الدفع.</div>{bookingSelectionBlocked && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-[11px] font-bold text-rose-800">انتهى التاريخ أو الوقت المختار، أو أصبح الموعد محجوزاً. ارجع واختر موعداً متاحاً.</div>}<button disabled={isLoading||!bookingUser||bookingSelectionBlocked} aria-disabled={isLoading||!bookingUser||bookingSelectionBlocked} onClick={async()=>{if(!bookingUser||bookingSelectionBlocked)return;setIsLoading(true);try{await submitBooking(bookingUser);onClose()}catch(err){setErrorMsg(err instanceof Error?err.message:'تعذر إرسال الحجز')}finally{setIsLoading(false)}}} className="w-full py-3 bg-emerald-700 text-white rounded-xl font-bold text-xs transition-opacity disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-35">{isLoading?'جاري إرسال الطلب...':`اختيار ${paymentMethod} وإرسال الطلب`}</button></div>}
+        </form> : guestStep==='otp_form' ? <form onSubmit={verifyGuestOtp} className="p-5 space-y-4"><div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs"><KeyRound className="inline w-4 h-4"/> أدخل الرمز الحقيقي المرسل إلى {customerPhone}</div><input value={otpCode} onChange={(e)=>setOtpCode(e.target.value)} inputMode="numeric" maxLength={6} className="w-full px-3 py-2 border rounded-xl text-center text-xl tracking-widest" placeholder="000000"/><div className="flex justify-between"><button type="button" onClick={()=>setGuestStep('details')} className="text-xs flex gap-1"><ArrowRight className="w-4 h-4"/>تغيير الرقم</button><button disabled={isLoading} className="px-5 py-2 bg-emerald-800 text-white rounded-xl text-xs font-bold">{isLoading?'جاري التحقق...':'الانتقال للدفع'}</button></div></form> : <div className="p-5 space-y-4"><div className="text-center"><WalletCards className="w-10 h-10 mx-auto text-emerald-700"/><h3 className="font-black mt-2">دفع العربون</h3><p className="text-2xl font-black text-amber-700">{depositAmount.toLocaleString()} د.ع</p></div><div className="grid grid-cols-2 gap-3">{(['زين كاش','Qi Card'] as const).map(method=><button key={method} onClick={()=>setPaymentMethod(method)} className={`p-4 border-2 rounded-2xl font-bold text-sm ${paymentMethod===method?'border-emerald-700 bg-emerald-50':'border-gray-200'}`}><CreditCard className="w-5 h-5 mx-auto mb-2"/>{method}</button>)}</div><div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900">سيُسجل الطلب بانتظار الدفع إلى أن يتم ربط حساب التاجر الرسمي ببوابة {paymentMethod}. لن نعتبر العربون مدفوعاً دون تأكيد حقيقي من بوابة الدفع.</div><button disabled={isLoading||!bookingUser||bookingSelectionBlocked} aria-disabled={isLoading||!bookingUser||bookingSelectionBlocked} onClick={()=>void completeBooking()} className="w-full py-3 bg-emerald-700 text-white rounded-xl font-bold text-xs transition-opacity disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-35">{isLoading?'جاري إرسال الطلب...':`اختيار ${paymentMethod} وإرسال الطلب`}</button></div>}
       </div>
     </div>
   );

@@ -6,6 +6,8 @@ import { BookingSchedule } from './BookingSchedule';
 
 interface BookingsViewProps {
   bookings: Booking[];
+  currentUserId?: string;
+  scope?: 'all' | 'incoming' | 'outgoing';
   onSelectBooking: (booking: Booking) => void;
   onSelectTab: (tab: string) => void;
   accountType?: AccountType;
@@ -49,6 +51,8 @@ const groupPendingAccounts = (anchor: Booking, bookings: Booking[]) => {
 
 export const BookingsView: React.FC<BookingsViewProps> = ({
   bookings = [],
+  currentUserId = '',
+  scope = 'all',
   onSelectBooking,
   onSelectTab,
   accountType,
@@ -66,10 +70,16 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
   const [requesterProfiles, setRequesterProfiles] = useState<Record<string, UserProfile | null>>({});
   const [profilesLoading, setProfilesLoading] = useState(false);
   const isBusinessAccount = accountType === 'صاحب قاعة' || accountType === 'مزود خدمة';
+  const showingCustomerBookings = isBusinessAccount && scope === 'outgoing';
+  const scopedBookings = bookings.filter((booking) => {
+    if (!isBusinessAccount || scope === 'all') return true;
+    if (scope === 'outgoing') return (booking.requesterId || booking.customerId) === currentUserId && booking.targetOwnerId !== currentUserId;
+    return booking.targetOwnerId === currentUserId;
+  });
 
   useEffect(() => setActiveFilter(initialFilter), [initialFilter]);
 
-  const filteredBookings = bookings.filter((b) => {
+  const filteredBookings = scopedBookings.filter((b) => {
     if (activeFilter === 'الكل') return true;
     return normalizeStatus(b.status) === activeFilter;
   });
@@ -118,8 +128,8 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
   const confirmBookingUpdate = async (booking: Booking, status: Booking['status'], closeDialogAfterSuccess = false) => {
     const verb = status === 'مقبول' ? 'قبول' : 'رفض';
     if (!window.confirm(`هل أنت متأكد من ${verb} طلب ${booking.requesterName || booking.customerName || 'هذا المستخدم'}؟`)) return;
-    const updated = await updateBooking(booking.id, status, closeDialogAfterSuccess);
-    if (updated && closeDialogAfterSuccess) setConflictBooking(null);
+    if (closeDialogAfterSuccess) setConflictBooking(null);
+    await updateBooking(booking.id, status, false);
   };
 
   const getStatusBadgeClass = (status: BookingStatus) => {
@@ -156,9 +166,9 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
         <div>
           <h1 className="text-2xl font-black flex items-center gap-2">
             <Calendar className="w-6 h-6 text-amber-300" />
-            {isBusinessAccount ? 'الحجوزات الواردة' : 'حجوزاتي'}
+            {showingCustomerBookings ? 'حجوزاتي كعميل' : isBusinessAccount ? 'الحجوزات الواردة' : 'حجوزاتي'}
           </h1>
-          <p className="text-xs text-amber-100 mt-1">{isBusinessAccount ? 'إدارة الطلبات والمواعيد من مكان واحد' : 'متابعة حالة طلباتك ومواعيد حجوزاتك'}</p>
+          <p className="text-xs text-amber-100 mt-1">{showingCustomerBookings ? 'متابعة القاعات والخدمات التي حجزتها بنفسك' : isBusinessAccount ? 'إدارة الطلبات والمواعيد من مكان واحد' : 'متابعة حالة طلباتك ومواعيد حجوزاتك'}</p>
         </div>
 
         <button
@@ -171,7 +181,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
       </div>
 
       {/* Filter Tabs */}
-      {isBusinessAccount && <BookingSchedule bookings={bookings}/>}
+      {isBusinessAccount && !showingCustomerBookings && <BookingSchedule bookings={scopedBookings}/>}
 
       {actionMessage && <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 text-xs font-bold">{actionMessage}</div>}
       {actionError && <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs font-bold">{actionError}</div>}
@@ -188,7 +198,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
             }`}
             id={`filter-booking-${filter}`}
           >
-            {filter} ({filter === 'الكل' ? bookings.length : bookings.filter(b => normalizeStatus(b.status) === filter).length})
+            {filter} ({filter === 'الكل' ? scopedBookings.length : scopedBookings.filter(b => normalizeStatus(b.status) === filter).length})
           </button>
         ))}
       </div>
@@ -201,7 +211,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
           </div>
           <h3 className="text-base font-bold text-gray-900">لا توجد حجوزات ضمن هذا التبويب</h3>
           <p className="text-xs text-gray-500 max-w-sm mx-auto">
-            {isBusinessAccount ? 'ستظهر هنا كل الطلبات الموجهة إلى نشاطك عند وصولها.' : 'يمكنك حجز القاعات ومزودي الخدمات بكل سهولة واختيار الموعد المناسب لليلة زفافك.'}
+            {showingCustomerBookings ? 'ستظهر هنا القاعات والخدمات التي تحجزها من حسابك.' : isBusinessAccount ? 'ستظهر هنا كل الطلبات الموجهة إلى نشاطك عند وصولها.' : 'يمكنك حجز القاعات ومزودي الخدمات بكل سهولة واختيار الموعد المناسب لليلة زفافك.'}
           </p>
           <button
             onClick={() => onSelectTab('home')}
@@ -214,6 +224,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredBookings.map((b) => {
             const tone = getCardTone(b.status);
+            const incomingBooking = b.targetOwnerId === currentUserId;
             return (
             <div
               key={b.id}
@@ -248,18 +259,18 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                 </div>
               </div>
 
-              {isBusinessAccount && <div className="rounded-xl border border-gray-100 bg-white px-3 py-2 text-xs">
+              {isBusinessAccount && incomingBooking && <div className="rounded-xl border border-gray-100 bg-white px-3 py-2 text-xs">
                 <span className="text-[10px] text-gray-500 block">صاحب الطلب:</span>
                 <b className="text-gray-900">{b.requesterName || b.customerName || 'غير معروف'}</b>
                 {(b.requesterPhone || b.customerPhone) && <span className="text-gray-500 mr-2" dir="ltr">{b.requesterPhone || b.customerPhone}</span>}
               </div>}
 
-              {isBusinessAccount && normalizeStatus(b.status) === 'قيد المراجعة' && pendingConflicts(b) > 0 && <button type="button" onClick={(event) => { event.stopPropagation(); void openConflictAccounts(b); }} className="w-full p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-[11px] font-bold text-amber-900 text-right hover:bg-amber-100 transition-colors">
+              {isBusinessAccount && incomingBooking && normalizeStatus(b.status) === 'قيد المراجعة' && pendingConflicts(b) > 0 && <button type="button" onClick={(event) => { event.stopPropagation(); void openConflictAccounts(b); }} className="w-full p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-[11px] font-bold text-amber-900 text-right hover:bg-amber-100 transition-colors">
                 ⚠️ يوجد {pendingConflicts(b)} طلب آخر بنفس التاريخ والفترة.
                 <span className="block mt-1 text-[9px] text-amber-700">اضغط لعرض الحسابات واتخاذ القرار</span>
               </button>}
 
-              {isBusinessAccount && normalizeStatus(b.status) === 'قيد المراجعة' && onUpdateBookingStatus && <div className="grid grid-cols-2 gap-2" onClick={(event) => event.stopPropagation()}>
+              {isBusinessAccount && incomingBooking && normalizeStatus(b.status) === 'قيد المراجعة' && onUpdateBookingStatus && <div className="grid grid-cols-2 gap-2" onClick={(event) => event.stopPropagation()}>
                 <button type="button" disabled={!!updatingBookingId} onClick={() => void confirmBookingUpdate(b, 'مقبول')} className="py-2.5 bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold disabled:opacity-50">
                   <CheckCircle2 className="inline w-4 h-4 ml-1"/>{updatingBookingId === b.id ? 'جاري التنفيذ...' : 'قبول'}
                 </button>

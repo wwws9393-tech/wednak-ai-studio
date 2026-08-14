@@ -18,6 +18,7 @@ import {
   arrayUnion,
   Timestamp,
 } from 'firebase/firestore';
+import type { DocumentData, QuerySnapshot } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import {
   UserProfile,
@@ -247,16 +248,41 @@ export async function saveUserToFirestore(user: UserProfile): Promise<UserProfil
 export function subscribeBookings(uid: string, accountType: AccountType, callback: (bookings: Booking[]) => void, onError?: (message:string)=>void) {
   if (!uid) { callback([]); return () => {}; }
   const ref = collection(db, 'bookings');
+  const readSnapshot = (snap: QuerySnapshot<DocumentData>) => (
+    snap.docs.map((d) => normalizeBookingDates({ ...d.data(), id: d.id } as Booking))
+  );
+  const reportError = (err: Error) => { console.error('Bookings listener failed:', err); onError?.(err.message); };
+
+  if (accountType === 'صاحب قاعة' || accountType === 'مزود خدمة') {
+    let incoming: Booking[] = [];
+    let outgoing: Booking[] = [];
+    let incomingReady = false;
+    let outgoingReady = false;
+    const emit = () => {
+      if (!incomingReady || !outgoingReady) return;
+      const merged = new Map<string, Booking>();
+      [...incoming, ...outgoing].forEach((booking) => merged.set(booking.id, booking));
+      const list = Array.from(merged.values());
+      list.sort(newestFirst);
+      callback(list);
+    };
+    const unsubscribeIncoming = onSnapshot(query(ref, where('targetOwnerId', '==', uid)), (snap) => {
+      incoming = readSnapshot(snap); incomingReady = true; emit();
+    }, reportError);
+    const unsubscribeOutgoing = onSnapshot(query(ref, where('requesterId', '==', uid)), (snap) => {
+      outgoing = readSnapshot(snap); outgoingReady = true; emit();
+    }, reportError);
+    return () => { unsubscribeIncoming(); unsubscribeOutgoing(); };
+  }
+
   const q = accountType === 'مدير' || accountType === 'مدير Admin'
     ? query(ref)
-    : accountType === 'صاحب قاعة' || accountType === 'مزود خدمة'
-      ? query(ref, where('targetOwnerId', '==', uid))
-      : query(ref, where('requesterId', '==', uid));
+    : query(ref, where('requesterId', '==', uid));
   return onSnapshot(q, (snap) => {
-    const list = snap.docs.map((d) => normalizeBookingDates({ ...d.data(), id: d.id } as Booking));
+    const list = readSnapshot(snap);
     list.sort(newestFirst);
     callback(list);
-  }, (err) => { console.error('Bookings listener failed:', err); onError?.(err.message); });
+  }, reportError);
 }
 
 export function subscribeAllUsers(callback: (users: UserProfile[]) => void, onError?: (message:string)=>void) {
