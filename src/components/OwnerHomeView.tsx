@@ -6,6 +6,7 @@ import { uploadOwnerImage, uploadOwnerMedia } from '../lib/storage';
 import { MediaViewer } from './MediaViewer';
 import { CroppedImageInput } from './CroppedImageInput';
 import { Coordinates, HallMap } from './HallMap';
+import { BookingStatusSummaryDialog } from './BookingStatusSummaryDialog';
 
 interface OwnerHomeViewProps {
   currentUser: UserProfile;
@@ -51,6 +52,7 @@ export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({ currentUser, halls
   const [offerPrice, setOfferPrice] = useState(0);
   const [offerStart, setOfferStart] = useState('');
   const [offerEnd, setOfferEnd] = useState('');
+  const [bookingDialog, setBookingDialog] = useState<'accepted' | 'pending' | null>(null);
 
   useEffect(() => { if (persistedHall) { setDraft(persistedHall); setIsEditing(false); } }, [persistedHall]);
 
@@ -131,8 +133,8 @@ export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({ currentUser, halls
       <div className="bg-gradient-to-r from-emerald-950 via-emerald-900 to-amber-950 p-6 rounded-3xl text-white shadow-xl">
         <span className="bg-amber-400 text-black text-xs font-black px-3 py-1 rounded-full">حساب صاحب قاعة</span><h1 className="text-2xl font-black text-amber-100 mt-2">أهلاً {currentUser.name}</h1>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
-          <button type="button" onClick={()=>onOpenBookings('قيد المراجعة')} className="bg-white/10 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-amber-300 p-3 rounded-2xl text-right transition" aria-label="فتح الطلبات المعلقة"><Clock className="w-4 h-4 text-amber-300"/><b className="block mt-1">{pendingBookings.length}</b><span className="text-[11px]">طلبات معلقة</span></button>
-          <button type="button" onClick={()=>onOpenBookings('مقبول')} className="bg-white/10 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-emerald-300 p-3 rounded-2xl text-right transition" aria-label="فتح الحجوزات المؤكدة"><CheckCircle2 className="w-4 h-4 text-emerald-300"/><b className="block mt-1">{acceptedBookings.length}</b><span className="text-[11px]">حجوزات مؤكدة</span></button>
+          <button type="button" onClick={()=>setBookingDialog('pending')} className="bg-white/10 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-amber-300 p-3 rounded-2xl text-right transition" aria-label="عرض الطلبات المعلقة"><Clock className="w-4 h-4 text-amber-300"/><b className="block mt-1">{pendingBookings.length}</b><span className="text-[11px]">طلبات معلقة</span></button>
+          <button type="button" onClick={()=>setBookingDialog('accepted')} className="bg-white/10 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-emerald-300 p-3 rounded-2xl text-right transition" aria-label="عرض الحجوزات المؤكدة"><CheckCircle2 className="w-4 h-4 text-emerald-300"/><b className="block mt-1">{acceptedBookings.length}</b><span className="text-[11px]">حجوزات مؤكدة</span></button>
           <button type="button" onClick={()=>document.getElementById('owner-hall-page')?.scrollIntoView({behavior:'smooth',block:'start'})} className="bg-white/10 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-blue-300 p-3 rounded-2xl text-right transition" aria-label="فتح صفحة القاعة"><Building2 className="w-4 h-4 text-blue-300"/><b className="block mt-1">{draft.capacity}</b><span className="text-[11px]">السعة</span></button>
           <button type="button" onClick={()=>{setIsEditing(true);setTimeout(()=>document.getElementById('owner-hall-page')?.scrollIntoView({behavior:'smooth',block:'start'}),0)}} className="bg-white/10 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-amber-300 p-3 rounded-2xl text-right transition" aria-label="تعديل سعر القاعة"><Tag className="w-4 h-4 text-amber-300"/><b className="block mt-1">{Number(draft.price || 0).toLocaleString('ar-IQ')}</b><span className="text-[11px]">السعر د.ع</span></button>
         </div>
@@ -162,6 +164,7 @@ export const OwnerHomeView: React.FC<OwnerHomeViewProps> = ({ currentUser, halls
 
       {ownPosts.length > 0 && <section className="bg-white p-5 rounded-3xl border space-y-3"><h2 className="font-bold">معرض أعمالي ({ownPosts.length})</h2><div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">{ownPosts.map(post=><button key={post.id} onClick={()=>setViewingPost(post)} className="border rounded-2xl overflow-hidden text-right hover:shadow-lg transition"><div className="h-40 bg-gray-100">{post.mediaType==='video'?<video src={post.mediaUrl} muted className="w-full h-full object-cover"/>:<img src={post.mediaUrl} className="w-full h-full object-cover"/>}</div><div className="p-3"><b className="text-xs">{post.title}</b><p className="text-[11px] text-gray-500 line-clamp-2">{post.caption||'بدون وصف'}</p></div></button>)}</div></section>}
       {viewingPost&&<MediaViewer url={viewingPost.mediaUrl} type={viewingPost.mediaType} title={viewingPost.title} description={viewingPost.caption} onClose={()=>setViewingPost(null)} onPrevious={ownPosts.length>1?()=>{const i=ownPosts.findIndex(x=>x.id===viewingPost.id);setViewingPost(ownPosts[(i-1+ownPosts.length)%ownPosts.length])}:undefined} onNext={ownPosts.length>1?()=>{const i=ownPosts.findIndex(x=>x.id===viewingPost.id);setViewingPost(ownPosts[(i+1)%ownPosts.length])}:undefined} onSaveDescription={onUpdatePostDescription?async value=>{await onUpdatePostDescription(viewingPost.id,value);setViewingPost({...viewingPost,caption:value});setMessage('تم حفظ وصف العمل.');}:undefined} onDelete={onDeletePost?async()=>{await onDeletePost(viewingPost.id);setViewingPost(null);setMessage('تم حذف العمل بنجاح.');}:undefined}/>}
+      {bookingDialog && <BookingStatusSummaryDialog bookings={bookingDialog === 'accepted' ? acceptedBookings : pendingBookings} variant={bookingDialog} onClose={()=>setBookingDialog(null)} onManage={()=>{const filter=bookingDialog === 'accepted' ? 'مقبول' : 'قيد المراجعة';setBookingDialog(null);onOpenBookings(filter);}} />}
     </div>
   );
 };
