@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Calendar, Clock, Users, Phone, User, FileText, CheckCircle, AlertTriangle, ShieldCheck, AlertCircle, KeyRound, ArrowRight, CreditCard, WalletCards, Heart } from 'lucide-react';
+import { X, Calendar, Clock, Users, Phone, User, FileText, CheckCircle, AlertTriangle, ShieldCheck, AlertCircle, KeyRound, ArrowRight, CreditCard, WalletCards } from 'lucide-react';
 import { ConfirmationResult, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 import { Hall, ServiceProvider, UserProfile, Booking } from '../types';
 import {
@@ -17,6 +17,7 @@ import {
 } from '../lib/firebase';
 import { WednakLogo } from './WednakLogo';
 import { formatAreaWithCity } from '../lib/location';
+import bookingCouple from '../assets/wednak-booking-couple.png';
 
 interface BookingModalProps {
   item: { type: 'hall'; data: Hall } | { type: 'provider'; data: ServiceProvider } | null;
@@ -394,9 +395,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
               <span className="rounded-full bg-amber-400 px-3 py-1 text-[10px] font-black text-emerald-950">ويدنك وياكم</span>
             </div>
             <div className="relative mx-auto mt-3 flex h-24 w-52 items-center justify-center overflow-hidden rounded-[2rem] border border-white/10 bg-white/10 px-4 shadow-inner">
-              <span className="translate-x-1 text-6xl drop-shadow-lg" aria-hidden="true">🤵🏻‍♂️</span>
-              <Heart className="relative z-10 mx-1 mt-3 h-6 w-6 shrink-0 fill-amber-300 text-amber-300 drop-shadow" aria-hidden="true" />
-              <span className="-translate-x-1 text-6xl drop-shadow-lg" aria-hidden="true">👰🏻‍♀️</span>
+              <img src={bookingCouple} alt="عروس وعريس" className="h-20 w-auto max-w-full object-contain drop-shadow-lg" />
             </div>
             <CheckCircle className="mx-auto mt-4 h-8 w-8 text-amber-300" />
             <h3 className="mt-2 text-lg font-black text-white">تم إرسال حجزك بنجاح</h3>
