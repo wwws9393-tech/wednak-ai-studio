@@ -175,6 +175,23 @@ button, a, input, select, textarea, [role="button"] { touch-action: manipulation
   -webkit-text-size-adjust: 100%;
 }
 
+/* Quiet wedding floral watermark used by booking cards without obscuring data. */
+.wednak-booking-card {
+  background-color: #fff;
+  background-image: url('./assets/booking-floral.svg'), linear-gradient(135deg, rgb(255 255 255 / .98), rgb(255 255 255 / .94));
+  background-repeat: no-repeat;
+  background-position: left bottom, center;
+  background-size: min(46%, 15rem) auto, 100% 100%;
+}
+
+.wednak-schedule-floral {
+  background-color: #fff !important;
+  background-image: url('./assets/booking-floral.svg');
+  background-repeat: no-repeat;
+  background-position: left center;
+  background-size: auto 92%;
+}
+
 .wednak-booking-date-control,
 .wednak-booking-date-native {
   box-sizing: border-box;

@@ -409,11 +409,6 @@ export function App() {
     setBookingsScope(currentUser.accountType === 'صاحب قاعة' || currentUser.accountType === 'مزود خدمة' ? 'incoming' : 'all');
     setCurrentTab('bookings');
   };
-  const openCustomerBookings = () => {
-    setBookingsFilter('الكل');
-    setBookingsScope('outgoing');
-    setCurrentTab('bookings');
-  };
   const selectMainTab = (tab: string) => {
     if (tab === 'bookings') {
       setBookingsFilter('الكل');
@@ -442,7 +437,7 @@ export function App() {
       return <OwnerHomeView currentUser={currentUser} halls={halls} bookings={bookings} posts={posts} offers={offers} onUpdateHall={handleUpdateHall} onOpenBookings={openBookings} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} onUpdatePostMetadata={handleUpdatePostMetadata} />;
     }
     if (currentUser.accountType === 'مزود خدمة' && currentTab === 'home') {
-      return <ServiceProviderHomeView currentUser={currentUser} serviceProviders={serviceProviders} bookings={bookings} posts={posts} offers={offers} onUpdateServiceProvider={() => {}} onOpenBookings={openBookings} onOpenCustomerBookings={openCustomerBookings} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} onUpdatePostMetadata={handleUpdatePostMetadata} />;
+      return <ServiceProviderHomeView currentUser={currentUser} serviceProviders={serviceProviders} bookings={bookings} posts={posts} offers={offers} onUpdateServiceProvider={() => {}} onOpenBookings={openBookings} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} onUpdatePostMetadata={handleUpdatePostMetadata} />;
     }
     if (currentUser.accountType === 'مدير Admin' || currentUser.accountType === 'مدير') {
       return <AdminHomeView currentUser={currentUser} users={visibleAdminUsers} dataErrors={adminDataErrors} complaints={complaints} bookings={visibleAdminBookings} halls={halls} providers={serviceProviders} onOpenUser={setSelectedUserProfile} onOpenUserId={async(id)=>{const fallback=visibleAdminUsers.find(u=>u.id===id);try{const user=await fetchPublicUserProfile(id);if(user)setSelectedUserProfile(user);else if(fallback)setSelectedUserProfile(fallback);}catch{if(fallback)setSelectedUserProfile(fallback)}}} onBlockUserId={async(id)=>{if(!id||id.startsWith('demo-'))throw new Error('هذا العنصر تجريبي ولا يرتبط بحساب مسجل.');await setUserBlockedInFirestore(id,true,currentUser);}} onDeleteUser={handleDeleteAdminUser} onOpenHall={setSelectedHallForModal} onOpenProvider={setSelectedProviderForModal} onOpenBooking={setSelectedBookingForDetails} onUpdateComplaintStatus={handleUpdateComplaintStatus} onUpdateBookingStatus={handleUpdateBookingStatus} />;
@@ -457,7 +452,7 @@ export function App() {
         </div>;
       case 'search': return <SearchView halls={halls} serviceProviders={serviceProviders} selectedCity={selectedCity} onSelectCity={setSelectedCity} cities={CITIES} favoriteIds={validFavoriteIds} onToggleFavorite={handleToggleFavorite} onSelectHall={setSelectedHallForModal} onBookHall={(h)=>setBookingItemForModal({type:'hall',data:h})} onSelectProvider={setSelectedProviderForModal} onBookProvider={(sp)=>setBookingItemForModal({type:'provider',data:sp})} currentUser={currentUser}/>;
       case 'explore': return <ExploreView posts={filteredPosts} offers={offers} halls={halls} serviceProviders={serviceProviders} likedPostIds={likedPostIds} favoriteIds={validFavoriteIds} onTogglePostLike={handleTogglePostLike} onToggleFavorite={handleToggleFavorite} onSelectHall={setSelectedHallForModal} onBookHall={(h)=>setBookingItemForModal({type:'hall',data:h})} onSelectProvider={setSelectedProviderForModal} onBookProvider={(sp)=>setBookingItemForModal({type:'provider',data:sp})} selectedCity={selectedCity} onSelectCity={setSelectedCity} cities={CITIES} currentUser={currentUser}/>;
-      case 'bookings': return <BookingsView bookings={bookingsWithCurrentImages} currentUserId={currentUser.id} scope={bookingsScope} accountType={currentUser.accountType} initialFilter={bookingsFilter} onUpdateBookingStatus={handleUpdateBookingStatus} onLoadRequester={resolveBookingRequester} onOpenRequester={openBookingRequester} onSelectBooking={setSelectedBookingForDetails} onSelectTab={setCurrentTab}/>;
+      case 'bookings': return <BookingsView bookings={bookingsWithCurrentImages} currentUserId={currentUser.id} scope={bookingsScope} onScopeChange={setBookingsScope} accountType={currentUser.accountType} initialFilter={bookingsFilter} onUpdateBookingStatus={handleUpdateBookingStatus} onLoadRequester={resolveBookingRequester} onOpenRequester={openBookingRequester} onSelectBooking={setSelectedBookingForDetails} onSelectTab={setCurrentTab}/>;
       case 'favorites': return <FavoritesView favoriteIds={validFavoriteIds} halls={halls} serviceProviders={serviceProviders} onToggleFavorite={handleToggleFavorite} onSelectHall={setSelectedHallForModal} onBookHall={(h)=>setBookingItemForModal({type:'hall',data:h})} onSelectProvider={setSelectedProviderForModal} onBookProvider={(sp)=>setBookingItemForModal({type:'provider',data:sp})} onSelectTab={setCurrentTab}/>;
       case 'notifications': return <NotificationsView notifications={notifications} onMarkAsRead={markNotificationRead} onMarkAllAsRead={markAllNotificationsRead} onOpenNotificationTarget={(n)=>{ if(n.targetBookingId){ const booking=bookings.find((b)=>b.id===n.targetBookingId); if(booking){setSelectedBookingForDetails(booking); return;} } if(n.type==='booking') setCurrentTab('bookings'); else if(n.type==='offer') setCurrentTab('explore'); }}/>;
       case 'complaints': return <ComplaintsView complaints={complaints} currentUser={currentUser} onSubmitComplaint={handleCreateComplaint} isAdmin={false} onUpdateComplaintStatus={handleUpdateComplaintStatus}/>;

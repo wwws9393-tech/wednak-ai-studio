@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Calendar, MapPin, CheckCircle2, XCircle, Eye, ArrowRight, Loader2, Phone, User, X } from 'lucide-react';
+import { Calendar, MapPin, CheckCircle2, XCircle, Eye, ArrowRight, Loader2, Phone, User, X, CalendarCheck2 } from 'lucide-react';
 import { Booking, BookingStatus, UserProfile } from '../types';
 import { AccountType } from '../types';
 import { BookingSchedule } from './BookingSchedule';
@@ -8,6 +8,7 @@ interface BookingsViewProps {
   bookings: Booking[];
   currentUserId?: string;
   scope?: 'all' | 'incoming' | 'outgoing';
+  onScopeChange?: (scope: 'all' | 'incoming' | 'outgoing') => void;
   onSelectBooking: (booking: Booking) => void;
   onSelectTab: (tab: string) => void;
   accountType?: AccountType;
@@ -53,6 +54,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
   bookings = [],
   currentUserId = '',
   scope = 'all',
+  onScopeChange,
   onSelectBooking,
   onSelectTab,
   accountType,
@@ -70,6 +72,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
   const [requesterProfiles, setRequesterProfiles] = useState<Record<string, UserProfile | null>>({});
   const [profilesLoading, setProfilesLoading] = useState(false);
   const isBusinessAccount = accountType === 'صاحب قاعة' || accountType === 'مزود خدمة';
+  const isServiceProvider = accountType === 'مزود خدمة';
   const showingCustomerBookings = isBusinessAccount && scope === 'outgoing';
   const scopedBookings = bookings.filter((booking) => {
     if (!isBusinessAccount || scope === 'all') return true;
@@ -172,13 +175,18 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
         </div>
 
         <button
-          onClick={() => onSelectTab('home')}
+          onClick={() => showingCustomerBookings ? onScopeChange?.('incoming') : onSelectTab('home')}
           className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs rounded-2xl shadow-xs transition-all self-start sm:self-auto flex items-center gap-1"
         >
-          <span>تصفح القاعات والخدمات</span>
-          <ArrowRight className="w-4 h-4 rotate-180" />
+          <span>{showingCustomerBookings ? 'الرجوع إلى الحجوزات الواردة' : 'تصفح القاعات والخدمات'}</span>
+          <ArrowRight className={`w-4 h-4 ${showingCustomerBookings ? '' : 'rotate-180'}`} />
         </button>
       </div>
+
+      {isServiceProvider && !showingCustomerBookings && <button type="button" onClick={() => onScopeChange?.('outgoing')} className="group flex w-full items-center justify-between gap-3 rounded-3xl border border-amber-300/70 bg-gradient-to-l from-emerald-950 via-emerald-900 to-emerald-800 p-4 text-right text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
+        <span className="flex min-w-0 items-center gap-3"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-amber-400 text-emerald-950"><CalendarCheck2 className="h-5 w-5" /></span><span><b className="block text-sm font-black text-amber-200">حجوزاتي كعميل</b><small className="block text-[10px] font-bold text-emerald-100">القاعات والخدمات التي حجزتها بنفسك</small></span></span>
+        <span className="flex shrink-0 items-center gap-2 rounded-xl bg-amber-400 px-3 py-2 text-xs font-black text-emerald-950"><b>{bookings.filter((booking) => (booking.requesterId || booking.customerId) === currentUserId && booking.targetOwnerId !== currentUserId).length}</b><ArrowRight className="h-4 w-4 rotate-180 transition-transform group-hover:-translate-x-1" /></span>
+      </button>}
 
       {/* Filter Tabs */}
       {isBusinessAccount && !showingCustomerBookings && <BookingSchedule bookings={scopedBookings}/>}
@@ -228,7 +236,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
             return (
             <div
               key={b.id}
-              className={`relative overflow-hidden bg-gradient-to-br from-white via-white to-amber-50/45 rounded-3xl border ring-1 p-4 transition-all flex flex-col justify-between space-y-3 cursor-pointer group ${tone.card}`}
+              className={`wednak-booking-card relative overflow-hidden rounded-3xl border ring-1 p-4 transition-all flex flex-col justify-between space-y-3 cursor-pointer group ${tone.card}`}
               onClick={() => onSelectBooking(b)}
               id={`booking-card-${b.id}`}
             >
@@ -318,7 +326,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
               const profile = requesterProfiles[key];
               const name = profile?.name || booking.requesterName || booking.customerName || 'صاحب الطلب';
               const phone = profile?.phone || booking.requesterPhone || booking.customerPhone || '';
-              return <article key={key} className="rounded-2xl border border-amber-200 bg-gradient-to-br from-white to-amber-50/60 p-3 shadow-sm">
+              return <article key={key} className="wednak-booking-card rounded-2xl border border-amber-200 p-3 shadow-sm">
                 <div className="flex items-center gap-3">
                   <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full border-2 border-emerald-600 bg-emerald-50 text-emerald-800">{profile?.profileImageUrl ? <img src={profile.profileImageUrl} alt={name} className="h-full w-full object-cover" /> : <User className="h-5 w-5" />}</div>
                   <button type="button" onClick={() => { setConflictBooking(null); void onOpenRequester?.(booking); }} className="min-w-0 flex-1 text-right">

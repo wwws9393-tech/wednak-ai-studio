@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Camera, CheckCircle2, Clock, Sparkles, Save, AlertCircle, Tag, Image as ImageIcon, Upload, Trash2, Video, CalendarCheck2, ArrowLeft } from 'lucide-react';
+import { Camera, CheckCircle2, Clock, Sparkles, Save, AlertCircle, Tag, Image as ImageIcon, Upload, Trash2, Video } from 'lucide-react';
 import { ServiceProvider, Booking, UserProfile, FeedPost, ServiceCategory, BusinessOffer } from '../types';
 import { saveOwnedServiceProvider } from '../lib/business';
 import { uploadOwnerMedia } from '../lib/storage';
@@ -18,7 +18,6 @@ interface ServiceProviderHomeViewProps {
   onUpdateProvider?: (updatedProvider: ServiceProvider) => void;
   onUpdateServiceProvider?: (updatedProvider: ServiceProvider) => void;
   onOpenBookings: (filter: 'قيد المراجعة' | 'مقبول') => void;
-  onOpenCustomerBookings?: () => void;
   onCreatePost: (post: Omit<FeedPost, 'id' | 'createdAt' | 'likesCount' | 'sharesCount'>) => Promise<void> | void;
   onDeletePost?: (postId: string) => Promise<void> | void;
   onUpdatePostMetadata?: (postId:string,title:string,caption:string)=>Promise<void>|void;
@@ -40,7 +39,7 @@ const FieldLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 );
 
 export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (props) => {
-  const { currentUser, serviceProviders, bookings, posts = [], offers = [], onOpenBookings, onOpenCustomerBookings, onCreatePost, onDeletePost, onUpdatePostMetadata } = props;
+  const { currentUser, serviceProviders, bookings, posts = [], offers = [], onOpenBookings, onCreatePost, onDeletePost, onUpdatePostMetadata } = props;
   const notifyUpdated = props.onUpdateProvider || props.onUpdateServiceProvider || (() => undefined);
   const persistedProvider = useMemo(
     () => serviceProviders.find((provider) => provider.ownerId === currentUser.id || (!!currentUser.ownedProviderId && provider.id === currentUser.ownedProviderId)),
@@ -71,7 +70,6 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
   const providerBookings = bookings.filter((booking) => booking.targetOwnerId === currentUser.id && booking.itemType === 'provider');
   const pendingBookings = providerBookings.filter((booking) => booking.status === 'قيد المراجعة' || booking.status === 'pending');
   const acceptedBookings = providerBookings.filter((booking) => booking.status === 'مقبول' || booking.status === 'accepted');
-  const customerBookings = bookings.filter((booking) => (booking.requesterId || booking.customerId) === currentUser.id && booking.targetOwnerId !== currentUser.id);
   const ownPosts = posts.filter((post) => post.authorId === currentUser.id);
   const unifiedWorks=[...(draft.portfolio||[]).map(url=>({kind:'portfolio' as const,url,type:isVideoUrl(url)?'video' as const:'image' as const,title:draft.portfolioTitles?.[url]||'عمل من المعرض',description:draft.portfolioDescriptions?.[url]})),...ownPosts.map(post=>({kind:'post' as const,url:post.mediaUrl,type:post.mediaType,title:post.title,description:post.caption,post}))];
   const setField = <K extends keyof ServiceProvider>(key: K, value: ServiceProvider[K]) => setDraft((prev) => ({ ...prev, [key]: value }));
@@ -155,16 +153,6 @@ export const ServiceProviderHomeView: React.FC<ServiceProviderHomeViewProps> = (
           <div className="bg-white/10 p-3 rounded-2xl text-right" aria-label="سعر الخدمة غير قابل للضغط"><Tag className="w-4 h-4 text-amber-300"/><b className="block mt-1">{Number(draft.priceStart || 0).toLocaleString('ar-IQ')}</b><span className="text-[11px]">ابتداءً من د.ع</span></div>
         </div>
       </div>
-
-      <button type="button" onClick={onOpenCustomerBookings} className="group w-full overflow-hidden rounded-3xl border border-amber-300/50 bg-gradient-to-l from-emerald-950 via-emerald-900 to-emerald-800 p-4 text-right text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-amber-400 text-emerald-950 shadow-md"><CalendarCheck2 className="h-6 w-6" /></span>
-            <span className="min-w-0"><b className="block text-base font-black text-amber-200">حجوزاتي كعميل</b><small className="block truncate text-[10px] font-bold text-emerald-100">القاعات والخدمات التي حجزتها بنفسك</small></span>
-          </div>
-          <span className="flex shrink-0 items-center gap-2 rounded-2xl bg-amber-400 px-3 py-2 font-black text-emerald-950 shadow-sm"><b>{customerBookings.length}</b><ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" /></span>
-        </div>
-      </button>
 
       {error && <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs font-bold flex gap-2"><AlertCircle className="w-4 h-4"/>{error}</div>}
       {message && <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 text-xs font-bold">{message}</div>}

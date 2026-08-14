@@ -48,7 +48,7 @@ export const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ bookin
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto" id="booking-details-modal-overlay">
-      <div className="bg-white rounded-3xl max-w-lg w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-emerald-100 flex flex-col justify-between my-auto animate-in fade-in zoom-in-95 duration-200">
+      <div className="wednak-booking-card bg-white rounded-3xl max-w-lg w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-emerald-100 flex flex-col justify-between my-auto animate-in fade-in zoom-in-95 duration-200">
         <div className="p-4 bg-emerald-900 text-white flex items-center justify-between rounded-t-3xl">
           <div>
             <span className="text-[10px] text-amber-300 font-extrabold uppercase tracking-widest block">كود الحجز المرجعي</span>

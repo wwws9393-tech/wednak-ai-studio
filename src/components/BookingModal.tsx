@@ -393,10 +393,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({ item, isOpen, onClos
               <WednakLogo className="h-11 w-11" />
               <span className="rounded-full bg-amber-400 px-3 py-1 text-[10px] font-black text-emerald-950">ويدنك وياكم</span>
             </div>
-            <div className="mx-auto mt-3 flex w-fit items-end justify-center gap-2 rounded-full bg-white/10 px-5 py-3 shadow-inner">
-              <span className="text-5xl drop-shadow-lg" aria-hidden="true">🤵🏻‍♂️</span>
-              <Heart className="mb-2 h-6 w-6 fill-amber-300 text-amber-300" aria-hidden="true" />
-              <span className="text-5xl drop-shadow-lg" aria-hidden="true">👰🏻‍♀️</span>
+            <div className="relative mx-auto mt-3 flex h-24 w-52 items-center justify-center overflow-hidden rounded-[2rem] border border-white/10 bg-white/10 px-4 shadow-inner">
+              <span className="translate-x-1 text-6xl drop-shadow-lg" aria-hidden="true">🤵🏻‍♂️</span>
+              <Heart className="relative z-10 mx-1 mt-3 h-6 w-6 shrink-0 fill-amber-300 text-amber-300 drop-shadow" aria-hidden="true" />
+              <span className="-translate-x-1 text-6xl drop-shadow-lg" aria-hidden="true">👰🏻‍♀️</span>
             </div>
             <CheckCircle className="mx-auto mt-4 h-8 w-8 text-amber-300" />
             <h3 className="mt-2 text-lg font-black text-white">تم إرسال حجزك بنجاح</h3>

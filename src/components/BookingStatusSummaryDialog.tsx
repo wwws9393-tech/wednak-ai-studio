@@ -74,7 +74,7 @@ export const BookingStatusSummaryDialog: React.FC<BookingStatusSummaryDialogProp
                 <span>التاريخ</span><span>الوقت</span><span>صاحب الحجز</span>
               </div>
               {sortedBookings.map((booking, index) => (
-                <div key={`${booking.id}-${index}`} className={`grid grid-cols-[0.9fr_1.1fr_1fr] items-center gap-2 border-t px-3 py-3 text-[10px] sm:text-xs ${index % 2 === 0 ? 'bg-white' : accepted ? 'bg-emerald-50/40' : 'bg-orange-50/50'} ${accepted ? 'border-emerald-100' : 'border-orange-100'}`}>
+                <div key={`${booking.id}-${index}`} className={`wednak-booking-card grid grid-cols-[0.9fr_1.1fr_1fr] items-center gap-2 border-t px-3 py-3 text-[10px] sm:text-xs ${accepted ? 'border-emerald-100' : 'border-orange-100'}`}>
                   <b className="break-words text-gray-900" dir="ltr">{booking.date}</b>
                   <span className={`flex min-w-0 items-center gap-1 font-bold ${accepted ? 'text-emerald-800' : 'text-orange-700'}`} dir="ltr">
                     <Clock3 className="h-3.5 w-3.5 shrink-0" />

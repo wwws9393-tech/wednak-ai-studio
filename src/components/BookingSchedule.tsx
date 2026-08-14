@@ -72,14 +72,14 @@ export const BookingSchedule: React.FC<{ bookings: Booking[] }> = ({ bookings })
               <b className="text-sm text-amber-100 block">حالة المواعيد والأوقات</b>
               <span className="text-[9px] text-emerald-100">الأحمر مقبول، البرتقالي قيد المراجعة</span>
             </div>
-            <input type="date" min={today} value={date} onChange={(event) => setDate(event.target.value)} className="border border-amber-300 rounded-xl px-2 py-2 text-xs bg-amber-400 text-emerald-950 font-black shadow-sm" />
+            <input type="date" min={today} value={date} onChange={(event) => setDate(event.target.value)} className="wednak-schedule-floral border border-amber-300 rounded-xl py-2 pr-2 pl-10 text-xs text-emerald-950 font-black shadow-sm" />
           </div>
           <div className="grid sm:grid-cols-3 gap-2">
             {SLOTS.map((slot) => {
               const booked = accepted.some((booking) => overlapsSlot(booking, slot));
               const underReview = !booked && pending.some((booking) => overlapsSlot(booking, slot));
               return (
-                <div key={slot.name} className={`p-3 rounded-xl border shadow-sm ${booked ? 'bg-rose-50 border-rose-300' : underReview ? 'bg-amber-100 border-amber-300' : 'bg-amber-400 border-amber-300 text-emerald-950'}`}>
+                <div key={slot.name} className={`wednak-schedule-floral py-3 pr-3 pl-16 rounded-xl border shadow-sm ${booked ? 'border-rose-300' : underReview ? 'border-amber-300' : 'border-emerald-300 text-emerald-950'}`}>
                   <b className="text-xs block">{slot.name}</b>
                   <span className="text-[10px]">{slot.start} - {slot.end}</span>
                   <span className={`block mt-1 text-[10px] font-bold ${booked ? 'text-rose-700' : underReview ? 'text-amber-700' : 'text-emerald-700'}`}>
@@ -138,8 +138,8 @@ export const BookingSchedule: React.FC<{ bookings: Booking[] }> = ({ bookings })
                   <div className="grid grid-cols-[0.9fr_1.1fr_1fr] bg-gray-100 px-3 py-2.5 text-[10px] sm:text-xs font-black text-gray-700">
                     <span>التاريخ</span><span>الوقت</span><span>صاحب الحجز</span>
                   </div>
-                  {upcomingAccepted.map((booking, index) => (
-                    <div key={booking.id} className={`grid grid-cols-[0.9fr_1.1fr_1fr] items-center gap-2 px-3 py-3 text-[10px] sm:text-xs ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} border-t border-gray-100`}>
+                  {upcomingAccepted.map((booking) => (
+                    <div key={booking.id} className="wednak-booking-card grid grid-cols-[0.9fr_1.1fr_1fr] items-center gap-2 px-3 py-3 text-[10px] sm:text-xs border-t border-gray-100">
                       <b className="text-gray-900 break-words" dir="ltr">{booking.date}</b>
                       <span className="font-bold text-rose-900 flex items-center gap-1 min-w-0"><Clock3 className="w-3.5 h-3.5 shrink-0"/><span className="break-words">{booking.startTime || booking.timeSlot}{booking.endTime ? ` - ${booking.endTime}` : ''}</span></span>
                       <span className="text-gray-600 break-words">{booking.requesterName || booking.customerName || 'غير معروف'}</span>
