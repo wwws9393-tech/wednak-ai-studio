@@ -19,12 +19,18 @@ export type MediaFolder =
   | 'post-media'
   | 'media-thumbnails';
 
+export type UploadProgressCallback = (progress: number) => void;
+
 export interface UploadedMediaAsset {
   mediaUrl: string;
   thumbnailUrl?: string;
 }
 
 const IMMUTABLE_CACHE_SECONDS = 60 * 60 * 24 * 365;
+
+function reportProgress(callback: UploadProgressCallback | undefined, value: number) {
+  callback?.(Math.max(0, Math.min(100, Math.round(value))));
+}
 
 function loadImage(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -109,7 +115,6 @@ async function createVideoThumbnail(file: File): Promise<File | undefined> {
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     return await canvasToFile(canvas, `${file.name.replace(/\.[^.]+$/, '')}-thumbnail`, 0.78);
   } catch {
-    // The upload must still succeed on browsers that cannot seek a local video.
     return undefined;
   } finally {
     video.removeAttribute('src');
@@ -118,37 +123,57 @@ async function createVideoThumbnail(file: File): Promise<File | undefined> {
   }
 }
 
-async function uploadFile(file: File, folder: MediaFolder, uid: string): Promise<string> {
+function uploadFile(
+  file: File,
+  folder: MediaFolder,
+  uid: string,
+  onProgress?: UploadProgressCallback,
+): Promise<string> {
   const path = `users/${uid}/${folder}/${Date.now()}-${safeFileName(file.name)}`;
   const uploadUrl = `${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${encodeURI(path)}`;
 
-  const response = await fetch(uploadUrl, {
-    method: 'POST',
-    headers: {
-      apikey: SUPABASE_PUBLISHABLE_KEY,
-      Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
-      'Content-Type': file.type || 'application/octet-stream',
-      'cache-control': `max-age=${IMMUTABLE_CACHE_SECONDS}, immutable`,
-      'x-upsert': 'false',
-    },
-    body: file,
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', uploadUrl, true);
+    xhr.setRequestHeader('apikey', SUPABASE_PUBLISHABLE_KEY);
+    xhr.setRequestHeader('Authorization', `Bearer ${SUPABASE_PUBLISHABLE_KEY}`);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    xhr.setRequestHeader('cache-control', `max-age=${IMMUTABLE_CACHE_SECONDS}, immutable`);
+    xhr.setRequestHeader('x-upsert', 'false');
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) {
+        reportProgress(onProgress, (event.loaded / event.total) * 100);
+      }
+    };
+    xhr.onerror = () => reject(new Error('تعذر الاتصال بخدمة رفع الملفات.'));
+    xhr.onabort = () => reject(new Error('تم إيقاف رفع الملف.'));
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        reportProgress(onProgress, 100);
+        resolve(`${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_BUCKET}/${encodeURI(path)}`);
+        return;
+      }
+
+      let message = 'تعذر رفع الملف إلى Supabase.';
+      try {
+        const body = JSON.parse(xhr.responseText || '{}');
+        message = body?.message || body?.error || message;
+      } catch {
+        // Keep Arabic fallback.
+      }
+      reject(new Error(message));
+    };
+
+    xhr.send(file);
   });
-
-  if (!response.ok) {
-    let message = 'تعذر رفع الملف إلى Supabase.';
-    try {
-      const body = await response.json();
-      message = body?.message || body?.error || message;
-    } catch {
-      // Keep fallback.
-    }
-    throw new Error(message);
-  }
-
-  return `${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_BUCKET}/${encodeURI(path)}`;
 }
 
-export async function uploadOwnerMediaAsset(file: File, folder: MediaFolder): Promise<UploadedMediaAsset> {
+export async function uploadOwnerMediaAsset(
+  file: File,
+  folder: MediaFolder,
+  onProgress?: UploadProgressCallback,
+): Promise<UploadedMediaAsset> {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error('يجب تسجيل الدخول أولاً لرفع الملفات.');
 
@@ -161,25 +186,34 @@ export async function uploadOwnerMediaAsset(file: File, folder: MediaFolder): Pr
     throw new Error(isVideo ? 'حجم الفيديو يجب أن لا يتجاوز 50MB.' : 'حجم الصورة يجب أن لا يتجاوز 8MB.');
   }
 
+  reportProgress(onProgress, 2);
   if (isImage) {
     const [optimized, thumbnail] = await Promise.all([
       resizeImage(file, 1600, 0.82),
       resizeImage(file, 640, 0.76),
     ]);
-    const mediaUrl = await uploadFile(optimized, folder, uid);
-    const thumbnailUrl = await uploadFile(thumbnail, 'media-thumbnails', uid);
+    reportProgress(onProgress, 10);
+    const mediaUrl = await uploadFile(optimized, folder, uid, (value) => reportProgress(onProgress, 10 + value * 0.67));
+    const thumbnailUrl = await uploadFile(thumbnail, 'media-thumbnails', uid, (value) => reportProgress(onProgress, 77 + value * 0.23));
+    reportProgress(onProgress, 100);
     return { mediaUrl, thumbnailUrl };
   }
 
-  const [thumbnail, mediaUrl] = await Promise.all([
-    createVideoThumbnail(file),
-    uploadFile(file, folder, uid),
-  ]);
-  const thumbnailUrl = thumbnail ? await uploadFile(thumbnail, 'media-thumbnails', uid) : undefined;
+  const thumbnailPromise = createVideoThumbnail(file);
+  const mediaUrl = await uploadFile(file, folder, uid, (value) => reportProgress(onProgress, 5 + value * 0.75));
+  const thumbnail = await thumbnailPromise;
+  const thumbnailUrl = thumbnail
+    ? await uploadFile(thumbnail, 'media-thumbnails', uid, (value) => reportProgress(onProgress, 80 + value * 0.2))
+    : undefined;
+  reportProgress(onProgress, 100);
   return { mediaUrl, thumbnailUrl };
 }
 
-export async function uploadOwnerMedia(file: File, folder: MediaFolder): Promise<string> {
+export async function uploadOwnerMedia(
+  file: File,
+  folder: MediaFolder,
+  onProgress?: UploadProgressCallback,
+): Promise<string> {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error('يجب تسجيل الدخول أولاً لرفع الملفات.');
   const isImage = file.type.startsWith('image/');
@@ -187,14 +221,20 @@ export async function uploadOwnerMedia(file: File, folder: MediaFolder): Promise
   if (!isImage && !isVideo) throw new Error('اختر صورة أو فيديو صالحاً.');
   const maxBytes = isVideo ? 50 * 1024 * 1024 : 8 * 1024 * 1024;
   if (file.size > maxBytes) throw new Error(isVideo ? 'حجم الفيديو يجب أن لا يتجاوز 50MB.' : 'حجم الصورة يجب أن لا يتجاوز 8MB.');
+
+  reportProgress(onProgress, 3);
   const prepared = isImage ? await resizeImage(file, 1600, 0.82) : file;
-  return uploadFile(prepared, folder, uid);
+  reportProgress(onProgress, 10);
+  const url = await uploadFile(prepared, folder, uid, (value) => reportProgress(onProgress, 10 + value * 0.9));
+  reportProgress(onProgress, 100);
+  return url;
 }
 
 export async function uploadOwnerImage(
   file: File,
-  folder: 'hall-cover' | 'hall-profile' | 'post-media'
+  folder: 'hall-cover' | 'hall-profile' | 'post-media',
+  onProgress?: UploadProgressCallback,
 ): Promise<string> {
   if (!file.type.startsWith('image/')) throw new Error('الملف المختار يجب أن يكون صورة.');
-  return uploadOwnerMedia(file, folder);
+  return uploadOwnerMedia(file, folder, onProgress);
 }
